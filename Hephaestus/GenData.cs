@@ -7,6 +7,8 @@ namespace Hephaestus
     // A class to store generated data
     public class GenData
     {
+        //Declare base vars and dictionaries
+        public static char[] vowels = { 'a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U' };
         public static List<string> BlacksmithNPCNames =
             new()
             {
@@ -489,14 +491,10 @@ namespace Hephaestus
             }
         };
 
-        public static List<FormKey> lootLVLIWhitelistBase =
-            new()
-            {
-                Skyrim.LeveledItem.LItemLeatherAndStrips75.FormKey,
-                Skyrim.LeveledItem.CWBearArmorPlayerReward.FormKey,
-            };
+        public static List<FormKey> LootLVLIWhitelistBase =
+            new() { Skyrim.LeveledItem.LItemLeatherAndStrips75.FormKey };
 
-        public static List<FormKey> lootLVLIWhitelistBlacksmith =
+        public static List<FormKey> LootLVLIWhitelistBlacksmith =
             new()
             {
                 Skyrim.LeveledItem.LItemArmorBootsHeavyBlacksmith.FormKey,
@@ -544,24 +542,7 @@ namespace Hephaestus
                 Dragonborn.LeveledItem.DLC2BlackSmithStalhrimWeapon75.FormKey,
             };
 
-        public static List<FormKey> lootLVLIWhitelistLoot =
-            new()
-            {
-                Skyrim.LeveledItem.LItemClothesAll.FormKey,
-                Skyrim.LeveledItem.LItemClothesWork.FormKey,
-                Skyrim.LeveledItem.LItemClothesRegular.FormKey,
-                Skyrim.LeveledItem.LItemClothesFarmAll.FormKey,
-                Skyrim.LeveledItem.LootDwarvenOre10.FormKey,
-                Skyrim.LeveledItem.LootFalmerOre10.FormKey,
-                Skyrim.LeveledItem.LootFalmerOre25.FormKey,
-                Skyrim.LeveledItem.LootFalmerOre100.FormKey,
-                Skyrim.LeveledItem.LootWarlockGems15.FormKey,
-                Skyrim.LeveledItem.LootBanditGems100.FormKey,
-                Skyrim.LeveledItem.LootForswornFood10.FormKey,
-                Skyrim.LeveledItem.LootForswornIngots100.FormKey,
-            };
-
-        public static List<FormKey> lootLVLIWhitelistVendor =
+        public static List<FormKey> LootLVLIWhitelistVendor =
             new()
             {
                 Skyrim.LeveledItem.LItemMiscVendorMineralsProcessed25.FormKey,
@@ -590,7 +571,7 @@ namespace Hephaestus
                 Dragonborn.LeveledItem.DLC2LItemIngredientFoodPrepared.FormKey
             };
 
-        public static List<FormKey> lootLVLIWhitelistSpecial =
+        public static List<FormKey> LootLVLIWhitelistSpecial =
             new()
             {
                 Skyrim.LeveledItem.LItemArmorBootsHeavySpecial.FormKey,

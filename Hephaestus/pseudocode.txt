@@ -1,0 +1,73 @@
+====================
+Config
+====================
+
+Bool knowledge visible (show/hide "perk" in UI)
+Bool Should tempering require crafting knowledge too
+List<FormLinkGetter<IItemGetter>> basic items
+Create a List<IItemGetter.FormKey> basicItems
+
+====================
+Prep phase
+====================
+
+Create a Dictionary<IKeywordGetter.FormKey, string> materialWhitelist
+Create a Dictionary<IKeywordGetter.FormKey, List<string>> partList
+
+Create a Dictionary<IKeywordGetter.FormKey, Dictionary<string, List<IBookGetter.FormKey, ISpellGetter.FormKey>>> partDict
+                    silver > handle > silverHandleBook : silverHandleKnowledge
+Create a Dictionary<IItemGetter.FormKey, List<IConstructibleGetter.FormKey>> itemCOBJs
+                    steel sword > steel sword cobj (with coal and iron as base), steel sword cobj (with steel at base)
+Create a Dictionary<IItemGetter.FormKey, List<ISpellGetter.FormKey>> itemKnowledgeReq
+                    silver sword > silver sword design, silver handle, silver blade, etc.
+Create a Dictionary<IItemGetter.FormKey, List<IKeywordGetter.FormKey>> itemMaterials
+                    iron sword > iron
+
+Loop through each material in materialWhitelist
+    Add an entry to partDict with the material as a key and a dictionary
+    Loop through all partList distinct values
+        Generate the material + part combo knowledge spell
+        Generate the material + part combo book item that rewards knowledge spell
+        if partDict[material][part] doesn't exists
+            initialize with a blank dictionary
+        add an entry to it with the book item as key and knowledge spell as Value
+
+====================
+Patch phase
+====================
+
+For each COBJ
+    // prechecks
+    only allow whitelisted workbenches
+    skip blacklisted items
+    (optional) skip temper COBJs
+    
+    // per item prep
+    add entry to itemMaterials with created item as key and empty list
+    for each materialWhitelist entry
+        if createdItem.keywords contains entry add keywords to itemMaterials[item]
+        if passes check, add to itemCOBJs with the created item as key
+    if itemMaterials[item] is empty, use generic system
+
+for each key as item in itemCOBJs
+    Add an entry to itemKnowledgeReq with the item as the key and a dictionary
+
+    if basicItems doesn't contain item
+        Generate a knowledge spell
+        Generate a book item that rewards knowledge spell
+        Add an entry to itemKnowledgeReq[item] with knowledge spell
+    
+    if generic system
+        
+    
+    for each partList key (eg: light armour keyword)
+        skip if current item doesn't have keyword
+
+        for each entry in itemMaterials[item]
+            for each value in partList[key] (each part, eg handle)
+                create dismantle COBJ with item as ingredient and output as partDict[material][part][0]
+                add partDict[material][part][1] to itemKnowledgeReq[item]
+    
+    for each entry in itemCOBJs[item]
+        for each spell in itemKnowledgeReq[item]
+            Add spell as requirement to item

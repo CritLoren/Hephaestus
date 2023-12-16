@@ -17,7 +17,7 @@ namespace Hephaestus
     public class Program
     {
         static Lazy<Settings> _settings = null!;
-        public static Settings settings => _settings.Value;
+        public static Settings Settings => _settings.Value;
 
         public static async Task<int> Main(string[] args)
         {
@@ -32,26 +32,121 @@ namespace Hephaestus
 
         private static void RunPatch(IPatcherState<ISkyrimMod, ISkyrimModGetter> state)
         {
-            //Declare base vars and dictionaries
-            char[] vowels = { 'a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U' };
+            Dictionary<FormKey, Dictionary<string, List<FormKey>>> partDict = new();
             Dictionary<FormKey, List<FormKey>> itemCOBJs = new();
-            Dictionary<FormKey, List<FormKey>> itemLVLIs = new();
-            Dictionary<FormKey, FormKey> itemBOOK = new();
-            Dictionary<FormKey, FormKey> itemBOOKPlayer = new();
-            Dictionary<FormKey, FormKey> itemBOOKFragment = new();
-            Dictionary<FormKey, Dictionary<string, FormKey>> bookLVLIs = new();
+            Dictionary<FormKey, List<FormKey>> itemKnowledgeReq = new();
+            Dictionary<FormKey, List<FormKey>> itemMaterials = new();
+
+            Console.WriteLine(string.Empty);
+            Console.WriteLine("=================================================");
+            Console.WriteLine(string.Empty);
+            Console.WriteLine("Prep phase ...");
+            Console.WriteLine(string.Empty);
 
             // LVLI Whitelist base
-            List<FormKey> lootLVLIWhitelist = new();
-            lootLVLIWhitelist.AddRange(GenData.lootLVLIWhitelistBase);
-            if (settings.distributeVendors)
-                lootLVLIWhitelist.AddRange(GenData.lootLVLIWhitelistVendor);
-            if (settings.distributeGeneralLoot)
-                lootLVLIWhitelist.AddRange(GenData.lootLVLIWhitelistLoot);
-            if (settings.distributeBlacksmiths)
-                lootLVLIWhitelist.AddRange(GenData.lootLVLIWhitelistBlacksmith);
-            if (settings.distributeSpecial)
-                lootLVLIWhitelist.AddRange(GenData.lootLVLIWhitelistSpecial);
+            List<FormKey> LootLVLIWhitelist = new();
+            LootLVLIWhitelist.AddRange(GenData.LootLVLIWhitelistBase);
+            if (Settings.DistributeVendors)
+                LootLVLIWhitelist.AddRange(GenData.LootLVLIWhitelistVendor);
+            if (Settings.DistributeBlacksmiths)
+                LootLVLIWhitelist.AddRange(GenData.LootLVLIWhitelistBlacksmith);
+            if (Settings.DistributeSpecial)
+                LootLVLIWhitelist.AddRange(GenData.LootLVLIWhitelistSpecial);
+
+            // Generate unique list of parts
+            Dictionary<string, int> partListUniques = new();
+            foreach (var part in Settings.PartList)
+            {
+                foreach (var partName in part.List)
+                {
+                    if (partListUniques.Keys.Contains(partName.Name))
+                        continue;
+                    partListUniques.Add(partName.Name, partName.Size);
+                }
+            }
+
+            foreach (var material in Settings.MaterialWhitelist)
+            {
+                partDict.Add(material.Keyword.FormKey, new());
+                foreach (string partName in partListUniques.Keys)
+                {
+                    // Deterministic seed
+                    var random = new Random($"{material.Name}_{partName}".GetHashCode());
+
+                    // Randomize book model
+                    var bookModelSetKey = GenData
+                        .bookModelLib
+                        .Keys
+                        .ElementAt(
+                            (int)
+                                Math.Round(
+                                    (GenData.bookModelLib.Count - 1) * (float)random.NextDouble()
+                                )
+                        );
+                    if (
+                        !state
+                            .LinkCache
+                            .TryResolve<IStaticGetter>(bookModelSetKey, out var bookStatic)
+                    )
+                        continue;
+
+                    // Randomize fragment model
+                    var bookFragmentModelSetKey = GenData
+                        .bookFragmentModelLib
+                        .Keys
+                        .ElementAt(
+                            (int)
+                                Math.Round(
+                                    (GenData.bookFragmentModelLib.Count - 1)
+                                        * (float)random.NextDouble()
+                                )
+                        );
+                    if (
+                        !state
+                            .LinkCache
+                            .TryResolve<IStaticGetter>(
+                                bookFragmentModelSetKey,
+                                out var bookFragmentStatic
+                            )
+                    )
+                        continue;
+
+                    Spell knowledge = state.PatchMod.Spells.AddNew();
+                    knowledge.EditorID = $"{material.Name}_{partName}_knowledge";
+                    knowledge.Name = $"Crafting Knowledge — Basic: {material.Name} {partName}";
+                    knowledge.MenuDisplayObject = new FormLinkNullable<IStaticGetter>(bookStatic);
+                    knowledge.ObjectBounds = bookStatic.ObjectBounds.DeepCopy();
+                    knowledge.EquipmentType = new FormLinkNullable<IEquipTypeGetter>(
+                        Skyrim.EquipType.EitherHand.FormKey
+                    );
+                    knowledge.Type = SpellType.Ability;
+                    knowledge.CastType = CastType.ConstantEffect;
+                    knowledge.TargetType = TargetType.Self;
+
+                    // create a new book
+                    Book book = state.PatchMod.Books.AddNew();
+
+                    // Set the book properties
+                    book.EditorID = $"{material.Name}_{partName}";
+                    book.Name = $"{material.Name} {partName} Notes";
+                    book.Description =
+                        $"My notes on the crafting process of the {material.Name} {partName}.";
+                    book.Value = 10;
+                    book.Weight = 0.25f;
+                    book.Model = GenData.bookModelLib[bookModelSetKey];
+                    book.InventoryArt = new FormLinkNullable<IStaticGetter>(bookStatic);
+                    book.ObjectBounds = bookStatic.ObjectBounds.DeepCopy();
+                    book.Type = Book.BookType.BookOrTome;
+                    book.PickUpSound = new FormLinkNullable<ISoundDescriptorGetter>(
+                        Skyrim.SoundDescriptor.ITMNoteUp.FormKey
+                    );
+                    book.Keywords = new Noggog.ExtendedList<IFormLinkGetter<IKeywordGetter>>
+                    {
+                        Skyrim.Keyword.VendorItemRecipe
+                    };
+                    book.Teaches = new BookSpell() { Spell = knowledge.ToLink<ISpellGetter>() };
+                }
+            }
 
             Console.WriteLine(string.Empty);
             Console.WriteLine("=================================================");
@@ -71,7 +166,7 @@ namespace Hephaestus
                 // Sanity checks to skip unnecessary processing
                 if (
                     baseCOBJ.Items == null
-                    || !settings
+                    || !Settings
                         .BenchSettings
                         .Any(e => e.BenchKeyword.FormKey == baseCOBJ.WorkbenchKeyword.FormKey)
                     || !baseCOBJ.CreatedObject.TryResolve(state.LinkCache, out var createdItem)
@@ -79,33 +174,33 @@ namespace Hephaestus
                     continue;
 
                 // Skip if in blacklist
-                if (settings.itemBlacklist == null || settings.itemBlacklist.Contains(createdItem))
+                if (Settings.ItemBlacklist.Contains(createdItem))
                     continue;
 
                 // Skip if item value can't be grabbed
                 if (createdItem is not IWeightValueGetter && createdItem is not IWeaponGetter)
                     continue;
 
-                // Check if there are any LVLIs that this item is present in
-                foreach (
-                    var baseLVLI in state.LoadOrder.PriorityOrder.LeveledItem().WinningOverrides()
-                )
-                {
-                    if (baseLVLI.Entries == null)
-                        continue;
-                    if (baseLVLI.Entries.Any(e => e.Data?.Reference.FormKey == createdItem.FormKey))
-                    {
-                        if (!itemLVLIs.ContainsKey(createdItem.FormKey))
-                            itemLVLIs.Add(createdItem.FormKey, new List<FormKey>());
+                // // Check if there are any LVLIs that this item is present in
+                // foreach (
+                //     var baseLVLI in state.LoadOrder.PriorityOrder.LeveledItem().WinningOverrides()
+                // )
+                // {
+                //     if (baseLVLI.Entries == null)
+                //         continue;
+                //     if (baseLVLI.Entries.Any(e => e.Data?.Reference.FormKey == createdItem.FormKey))
+                //     {
+                //         if (!itemLVLIs.ContainsKey(createdItem.FormKey))
+                //             itemLVLIs.Add(createdItem.FormKey, new List<FormKey>());
 
-                        if (!itemLVLIs[createdItem.FormKey].Contains(baseLVLI.FormKey))
-                            itemLVLIs[createdItem.FormKey].Add(baseLVLI.FormKey);
-                    }
-                }
+                //         if (!itemLVLIs[createdItem.FormKey].Contains(baseLVLI.FormKey))
+                //             itemLVLIs[createdItem.FormKey].Add(baseLVLI.FormKey);
+                //     }
+                // }
 
-                // if no relevant LVLIs, skip item early
-                if (!itemLVLIs.ContainsKey(createdItem.FormKey))
-                    continue;
+                // // if no relevant LVLIs, skip item early
+                // if (!itemLVLIs.ContainsKey(createdItem.FormKey))
+                //     continue;
 
                 // add COBJ now since it's already passed the LVLI check
                 if (!itemCOBJs.ContainsKey(createdItem.FormKey))
@@ -130,7 +225,7 @@ namespace Hephaestus
                 )
                     continue;
 
-                if (settings.ShowDebugLogs)
+                if (Settings.ShowDebugLogs)
                 {
                     Console.WriteLine(string.Empty);
                     Console.WriteLine("=======================");
@@ -198,7 +293,7 @@ namespace Hephaestus
                 // Initialize other
                 string? requiredItems = string.Empty;
                 string? aAn;
-                if (objName?.IndexOfAny(vowels) == 0)
+                if (objName?.IndexOfAny(GenData.vowels) == 0)
                     aAn = "an ";
                 else if (
                     (createdItemFormKey == Skyrim.MiscItem.LeatherStrips.FormKey)
@@ -245,7 +340,7 @@ namespace Hephaestus
                         break;
                 }
 
-                if (settings.ShowDebugLogs)
+                if (Settings.ShowDebugLogs)
                 {
                     Console.WriteLine(string.Empty);
                     Console.WriteLine($"Creating {objName} schematics and patching COBJs ...");
@@ -262,17 +357,17 @@ namespace Hephaestus
                         continue;
 
                     // Set values based on bench
-                    var curBenchSettings = settings.BenchSettings[
-                        settings
+                    var curBenchSettings = Settings.BenchSettings[
+                        Settings
                             .BenchSettings
                             .FindIndex(e => e.BenchKeyword.FormKey == cobj.WorkbenchKeyword.FormKey)
                     ];
-                    string objBench = curBenchSettings.objBenchName ?? "crafting bench";
-                    string schematicType = curBenchSettings.schematicTypeName ?? "Schematic";
-                    string processName = curBenchSettings.processName ?? "craft";
+                    string objBench = curBenchSettings.ObjBenchName ?? "crafting bench";
+                    string schematicType = curBenchSettings.SchematicTypeName ?? "Schematic";
+                    string processName = curBenchSettings.ProcessName ?? "craft";
                     string processNameCont = $"{processName}ing";
 
-                    if (vowels.Any(e => e == processName[processName.Length - 1]))
+                    if (GenData.vowels.Any(e => e == processName[processName.Length - 1]))
                         processNameCont = $"{processName.Substring(0, processName.Length - 1)}ing";
 
                     if (cobj.Items == null)
@@ -297,7 +392,7 @@ namespace Hephaestus
                             Math.Max(Math.Round(min + (max - min) * (float)random.NextDouble()), 1);
 
                         // NPC name lists
-                        List<string> NPCNames = settings.LovedOnesName;
+                        List<string> NPCNames = Settings.LovedOnesName;
 
                         // Name generation for schematic data
                         if (createdItemKeywords.Keywords != null)
@@ -466,7 +561,7 @@ namespace Hephaestus
                         // Add book to dict
                         itemBOOK.Add(createdItem.FormKey, book.FormKey);
 
-                        if (settings.ShowDebugLogs)
+                        if (Settings.ShowDebugLogs)
                         {
                             Console.WriteLine($"Created {book.Name}:");
                             Console.WriteLine("-----------------------");
@@ -566,7 +661,7 @@ namespace Hephaestus
                             cobj.WorkbenchKeyword.FormKey
                         );
 
-                        if (settings.useSmelter)
+                        if (Settings.UseSmelter)
                         {
                             itemToFragmentCOBJ.WorkbenchKeyword =
                                 new FormLinkNullable<IKeywordGetter>(
@@ -647,7 +742,7 @@ namespace Hephaestus
 
                         bookCOBJ.Conditions.Add(bookCOBJCondItem);
 
-                        if (settings.ShowDebugLogs)
+                        if (Settings.ShowDebugLogs)
                         {
                             Console.WriteLine($"Created {bookFragment.Name}:");
                             Console.WriteLine("-----------------------");
@@ -782,12 +877,12 @@ namespace Hephaestus
                             }
                         );
 
-                    if (settings.ShowDebugLogs)
+                    if (Settings.ShowDebugLogs)
                         Console.WriteLine($"    Patched {cobj.EditorID} with {book.EditorID}");
                 }
 
                 // Make tempered COBJs also require schematics
-                if (settings.TemperReqSchematic)
+                if (Settings.TemperReqSchematic)
                 {
                     foreach (
                         IConstructibleObjectGetter temperCOBJ in state
@@ -809,7 +904,7 @@ namespace Hephaestus
                         )
                             continue;
 
-                        if (settings.ShowDebugLogs)
+                        if (Settings.ShowDebugLogs)
                         {
                             Console.WriteLine(string.Empty);
                             Console.WriteLine(
@@ -909,7 +1004,7 @@ namespace Hephaestus
                     }
                 }
 
-                if (settings.ShowDebugLogs)
+                if (Settings.ShowDebugLogs)
                 {
                     Console.WriteLine(string.Empty);
                     Console.WriteLine($"Patching LVLIs to include new schematics ...");
@@ -928,8 +1023,8 @@ namespace Hephaestus
 
                     // Skip non-whitelisted LVLIs
                     if (
-                        !lootLVLIWhitelist.Contains(lvliFormKey)
-                        && !settings.LVLIWhitelist.Contains(leveledList)
+                        !LootLVLIWhitelist.Contains(lvliFormKey)
+                        && !Settings.LVLIWhitelist.Contains(leveledList)
                     )
                         continue;
 
@@ -959,7 +1054,7 @@ namespace Hephaestus
                     {
                         // Create leveled list for each item with a user customizable drop chance
                         schematicLVLI = state.PatchMod.LeveledItems.AddNew();
-                        schematicLVLI.ChanceNone = (byte)(100 - settings.DropChance);
+                        schematicLVLI.ChanceNone = (byte)(100 - Settings.DropChance);
                         schematicLVLI.EditorID = leveledItemIDTemplate;
                         schematicLVLI.Entries = new Noggog.ExtendedList<LeveledItemEntry>
                         {
@@ -989,7 +1084,7 @@ namespace Hephaestus
                         schematicLVLI = schematicLVLILinkLVLI;
                     }
 
-                    if (settings.ShowDebugLogs)
+                    if (Settings.ShowDebugLogs)
                     {
                         Console.WriteLine(string.Empty);
                         Console.WriteLine(
@@ -1027,7 +1122,7 @@ namespace Hephaestus
                             modifiedBaseLVLI.Entries = new Noggog.ExtendedList<LeveledItemEntry>();
                         modifiedBaseLVLI.Entries.Add(newEntry);
 
-                        if (settings.ShowDebugLogs)
+                        if (Settings.ShowDebugLogs)
                             Console.WriteLine($"        Injected at level {existingLevel};");
                     }
                 }
