@@ -15,7 +15,7 @@ Create a Dictionary<IKeywordGetter.FormKey, string> materialWhitelist
 Create a Dictionary<IKeywordGetter.FormKey, List<string>> partList
 
 Create a Dictionary<IKeywordGetter.FormKey, Dictionary<string, List<IBookGetter.FormKey, ISpellGetter.FormKey>>> partDict
-                    silver > handle > silverHandleBook : silverHandleKnowledge
+                    silver > handle > silverHandleKnowledge
 Create a Dictionary<IItemGetter.FormKey, List<IConstructibleGetter.FormKey>> itemCOBJs
                     steel sword > steel sword cobj (with coal and iron as base), steel sword cobj (with steel at base)
 Create a Dictionary<IItemGetter.FormKey, List<ISpellGetter.FormKey>> itemKnowledgeReq

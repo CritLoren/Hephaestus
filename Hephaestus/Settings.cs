@@ -45,6 +45,10 @@ namespace Hephaestus
 
         [SynthesisSettingName("The part's size (going from 1 to 3)")]
         public int Size { get; set; } = 1;
+
+        [SynthesisSettingName("The part's crafting bench")]
+        public IFormLinkGetter<IKeywordGetter> Bench { get; set; } =
+            Skyrim.Keyword.CraftingSmithingForge;
     }
 
     public class PartList
@@ -340,7 +344,11 @@ namespace Hephaestus
                     List =
                     {
                         new PartData() { Name = "Grip" },
-                        new PartData() { Name = "Bowstring" },
+                        new PartData()
+                        {
+                            Name = "Bowstring",
+                            Bench = Skyrim.Keyword.CraftingTanningRack
+                        },
                         new PartData() { Name = "Limb", Size = 2 }
                     }
                 },
@@ -350,7 +358,11 @@ namespace Hephaestus
                     List =
                     {
                         new PartData() { Name = "Pommel" },
-                        new PartData() { Name = "One Handed Handle" },
+                        new PartData()
+                        {
+                            Name = "One Handed Handle",
+                            Bench = Skyrim.Keyword.CraftingTanningRack
+                        },
                         new PartData() { Name = "Standard Shaft" },
                         new PartData() { Name = "Axe Head" }
                     }
@@ -361,7 +373,11 @@ namespace Hephaestus
                     List =
                     {
                         new PartData() { Name = "Pommel" },
-                        new PartData() { Name = "One Handed Handle" },
+                        new PartData()
+                        {
+                            Name = "One Handed Handle",
+                            Bench = Skyrim.Keyword.CraftingTanningRack
+                        },
                         new PartData() { Name = "Standard Shaft" },
                         new PartData() { Name = "Mace Head" }
                     }
@@ -372,7 +388,11 @@ namespace Hephaestus
                     List =
                     {
                         new PartData() { Name = "Pommel" },
-                        new PartData() { Name = "One Handed Handle" },
+                        new PartData()
+                        {
+                            Name = "One Handed Handle",
+                            Bench = Skyrim.Keyword.CraftingTanningRack
+                        },
                         new PartData() { Name = "Guard" },
                         new PartData() { Name = "Standard Blade", Size = 2 }
                     }
@@ -383,7 +403,11 @@ namespace Hephaestus
                     List =
                     {
                         new PartData() { Name = "Pommel" },
-                        new PartData() { Name = "One Handed Handle" },
+                        new PartData()
+                        {
+                            Name = "One Handed Handle",
+                            Bench = Skyrim.Keyword.CraftingTanningRack
+                        },
                         new PartData() { Name = "Guard" },
                         new PartData() { Name = "Short Blade" }
                     }
@@ -394,7 +418,11 @@ namespace Hephaestus
                     List =
                     {
                         new PartData() { Name = "Pommel" },
-                        new PartData() { Name = "Two Handed Handle" },
+                        new PartData()
+                        {
+                            Name = "Two Handed Handle",
+                            Bench = Skyrim.Keyword.CraftingTanningRack
+                        },
                         new PartData() { Name = "Guard" },
                         new PartData() { Name = "Great Blade", Size = 3 }
                     }
@@ -405,7 +433,11 @@ namespace Hephaestus
                     List =
                     {
                         new PartData() { Name = "Pommel" },
-                        new PartData() { Name = "Two Handed Handle" },
+                        new PartData()
+                        {
+                            Name = "Two Handed Handle",
+                            Bench = Skyrim.Keyword.CraftingTanningRack
+                        },
                         new PartData() { Name = "Long Shaft", Size = 2 },
                         new PartData() { Name = "Great Axe Blade", Size = 2 }
                     }
@@ -416,7 +448,11 @@ namespace Hephaestus
                     List =
                     {
                         new PartData() { Name = "Pommel" },
-                        new PartData() { Name = "Two Handed Handle" },
+                        new PartData()
+                        {
+                            Name = "Two Handed Handle",
+                            Bench = Skyrim.Keyword.CraftingTanningRack
+                        },
                         new PartData() { Name = "Long Shaft", Size = 2 },
                         new PartData() { Name = "Great Hammer Blade", Size = 2 }
                     }
