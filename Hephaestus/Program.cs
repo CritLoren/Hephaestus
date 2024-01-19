@@ -9,7 +9,8 @@ using Noggog;
 namespace Hephaestus
 {
     // To do
-    // Find a way to break down items without losing them (for artifacts and the like, maybe make a item to fragment cobj option that looks for a specific level in smithing?)
+    // custom crafting spell to move items around?
+    // refactor code, too much duplicated initializations of books, book fragments, conds, etc.
 
     public class Program
     {
@@ -28,11 +29,11 @@ namespace Hephaestus
 
         private static void RunPatch(IPatcherState<ISkyrimMod, ISkyrimModGetter> state)
         {
-            Dictionary<FormKey, Dictionary<string, FormKey>> partDict = new();
+            Dictionary<string, Dictionary<string, FormKey>> partDict = new();
             Dictionary<FormKey, List<FormKey>> bookKnowledge = new();
             Dictionary<FormKey, List<FormKey>> itemCOBJs = new();
             Dictionary<FormKey, List<FormKey>> itemKnowledgeReq = new();
-            Dictionary<FormKey, List<FormKey>> itemMaterials = new();
+            Dictionary<FormKey, List<string>> itemMaterials = new();
             Dictionary<FormKey, FormKey> itemBench = new();
             List<FormKey> noValidMats = new();
             List<FormKey> safeToKeepKnowledge = new();
@@ -56,18 +57,18 @@ namespace Hephaestus
 
             // Generate unique list of parts
             Dictionary<string, PartData> partListUniques = new();
-            foreach (var part in Settings.PartList)
+            foreach (var partEntry in Settings.PartList)
             {
-                foreach (var partName in part.List)
+                foreach (var part in partEntry.List)
                 {
-                    if (!partListUniques.Keys.Contains(partName.Name))
-                        partListUniques.Add(partName.Name, partName);
+                    if (!partListUniques.Keys.Contains(part.Name))
+                        partListUniques.Add(part.Name, part);
                 }
             }
 
             foreach (var material in Settings.MaterialWhitelist)
             {
-                partDict.Add(material.Keyword.FormKey, new());
+                partDict.Add(material.Name, new());
 
                 foreach (string partName in partListUniques.Keys)
                 {
@@ -112,7 +113,7 @@ namespace Hephaestus
                     Spell knowledge = state.PatchMod.Spells.AddNew();
 
                     knowledge.EditorID = $"{materialPartEditorID}Knowledge";
-                    knowledge.Name = $"Crafting Knowledge - Basic: {materialPartName}";
+                    knowledge.Name = $"{materialPartName} - Part Knowledge";
                     knowledge.MenuDisplayObject = new FormLinkNullable<IStaticGetter>(bookStatic);
                     knowledge.ObjectBounds = bookStatic.ObjectBounds.DeepCopy();
                     knowledge.EquipmentType = new FormLinkNullable<IEquipTypeGetter>(
@@ -122,12 +123,36 @@ namespace Hephaestus
                     knowledge.CastType = CastType.ConstantEffect;
                     knowledge.TargetType = TargetType.Self;
 
+                    // Create the knowledge "perk" mgef
+                    MagicEffect knowledgeMGEF = state.PatchMod.MagicEffects.AddNew();
+
+                    knowledgeMGEF.EditorID = $"{materialPartEditorID}KnowledgeMGEF";
+                    knowledgeMGEF.Name = $"{materialPartName} - Part Knowledge";
+                    knowledgeMGEF.MenuDisplayObject = new FormLinkNullable<IStaticGetter>(
+                        bookStatic
+                    );
+                    knowledgeMGEF.Flags.SetFlag(MagicEffect.Flag.NoMagnitude, true);
+                    knowledgeMGEF.CastType = CastType.ConstantEffect;
+                    knowledgeMGEF.TargetType = TargetType.Self;
+                    if (Settings.HideKnowledgeUI)
+                        knowledgeMGEF.Flags = MagicEffect.Flag.HideInUI;
+                    knowledgeMGEF.EquipAbility = new FormLinkNullable<ISpellGetter>(knowledge);
+                    ;
+
+                    knowledge.Effects.Add(
+                        new Effect()
+                        {
+                            BaseEffect = new FormLinkNullable<IMagicEffectGetter>(knowledgeMGEF),
+                            Data = new() { Magnitude = 1f }
+                        }
+                    );
+
                     // create a new book
                     Book book = state.PatchMod.Books.AddNew();
 
                     // Set the book properties
                     book.EditorID = $"{materialPartEditorID}Schematic";
-                    book.Name = $"{materialPartName} Schematic";
+                    book.Name = $"{materialPartName} - Part Schematic";
                     book.Description =
                         $"A schematic describing the process of crafting a {materialPartName}. I should read this to memorize it — or perhaps I can sell it instead...";
                     book.Value = 10;
@@ -150,7 +175,7 @@ namespace Hephaestus
 
                     // Set the book properties
                     bookFragment.EditorID = $"{book.EditorID}Fragment";
-                    bookFragment.Name = $"{materialPartName} Notes";
+                    bookFragment.Name = $"{materialPartName} - Part Notes";
                     bookFragment.Description =
                         $"My notes on the crafting process of a {materialPartName}.¨If I collect a few more I can perhaps combine them into a schematic...";
                     bookFragment.Value = 2;
@@ -219,7 +244,7 @@ namespace Hephaestus
 
                     matToNoteCOBJ.EditorID = $"{materialPartEditorID}RecipeFragment";
                     matToNoteCOBJ.CreatedObject = new FormLinkNullable<IConstructibleGetter>(
-                        book.FormKey
+                        bookFragment.FormKey
                     );
 
                     matToNoteCOBJ.Items = new ExtendedList<ContainerEntry>
@@ -236,7 +261,7 @@ namespace Hephaestus
                     matToNoteCOBJ.WorkbenchKeyword = new FormLinkNullable<IKeywordGetter>(
                         partListUniques[partName].Bench.FormKey
                     );
-                    matToNoteCOBJ.CreatedObjectCount = (ushort?)matToNoteCOBJ.Items.Count;
+                    matToNoteCOBJ.CreatedObjectCount = 1;
 
                     // Add conditions (so it doesn't clutter the menu)
                     var matToNoteCOBJCond = new GetItemCountConditionData()
@@ -249,7 +274,7 @@ namespace Hephaestus
                         matToNoteCOBJCond,
                         material.Ingot.FormKey
                     );
-                    matToNoteCOBJCond.ItemOrList.Link.SetTo(bookFragment);
+                    matToNoteCOBJCond.ItemOrList.Link.SetTo(material.Ingot.FormKey);
 
                     matToNoteCOBJ.Conditions.Add(
                         new ConditionFloat()
@@ -259,6 +284,32 @@ namespace Hephaestus
                             Data = matToNoteCOBJCond
                         }
                     );
+
+                    // Add conditions (so it doesn't clutter the menu)
+                    if (Settings.HideOnceUnlocked)
+                    {
+                        var knowledgeCondData = new HasSpellConditionData()
+                        {
+                            RunOnType = Condition.RunOnType.Reference,
+                            Reference = Skyrim.PlayerRef,
+                        };
+
+                        knowledgeCondData.Spell = new FormLinkOrIndex<ISpellGetter>(
+                            knowledgeCondData,
+                            knowledge.FormKey
+                        );
+                        knowledgeCondData.Spell.Link.SetTo(knowledge);
+
+                        var knowledgeCond = new ConditionFloat()
+                        {
+                            ComparisonValue = 0,
+                            CompareOperator = CompareOperator.EqualTo,
+                            Data = knowledgeCondData
+                        };
+
+                        matToNoteCOBJ.Conditions.Add(knowledgeCond);
+                        noteToBookCOBJ.Conditions.Add(knowledgeCond);
+                    }
 
                     // Do not show cobjs if lacking skill
                     if (material.PerkReq != FormLinkGetter<IPerkGetter>.Null)
@@ -297,7 +348,7 @@ namespace Hephaestus
                     }
 
                     // Add knowledge spell to part dict then add knowledge and book to separate dict
-                    partDict[material.Keyword.FormKey].Add(partName, knowledge.FormKey);
+                    partDict[material.Name].Add(partName, knowledge.FormKey);
                     bookKnowledge.Add(
                         knowledge.FormKey,
                         new()
@@ -360,13 +411,22 @@ namespace Hephaestus
                         if (createdItemKeywords.Keywords == null)
                             continue;
 
-                        if (createdItemKeywords.Keywords.Contains(material.Keyword.FormKey))
+                        if (
+                            createdItemKeywords.Keywords.Any(e => material.Keywords.Contains(e))
+                            // Jewelry specific check
+                            || (
+                                createdItemKeywords.Keywords.Contains(Skyrim.Keyword.ArmorJewelry)
+                                && baseCOBJ.Items.Any(e =>
+                                    e.Item.Item.FormKey == material.Ingot.FormKey
+                                )
+                            )
+                        )
                         {
                             if (!itemMaterials.ContainsKey(createdItem.FormKey))
                             {
                                 itemMaterials.Add(createdItem.FormKey, new());
                             }
-                            itemMaterials[createdItem.FormKey].Add(material.Keyword.FormKey);
+                            itemMaterials[createdItem.FormKey].Add(material.Name);
 
                             if (Settings.ShowDebugLogs)
                             {
@@ -376,29 +436,29 @@ namespace Hephaestus
                     }
                 }
 
-                if (!itemMaterials.ContainsKey(createdItem.FormKey))
+                if (itemMaterials.ContainsKey(createdItem.FormKey))
+                {
+                    if (!itemCOBJs.ContainsKey(createdItem.FormKey))
+                        itemCOBJs.Add(createdItem.FormKey, new List<FormKey>());
+                    itemCOBJs[createdItem.FormKey].Add(baseCOBJ.FormKey);
+
+                    if (!itemBench.ContainsKey(createdItem.FormKey))
+                        itemBench.Add(createdItem.FormKey, baseCOBJ.WorkbenchKeyword.FormKey);
+
+                    if (Settings.ShowDebugLogs)
+                    {
+                        Console.WriteLine(
+                            $"Storing the {baseCOBJ.EditorID} COBJ {createdItemName.Name} connection"
+                        );
+                    }
+                }
+                else
                 {
                     noValidMats.Add(createdItem.FormKey);
                     if (Settings.ShowDebugLogs)
                     {
                         Console.WriteLine($"No valid materials found, ignoring...");
                     }
-                }
-                else
-                {
-                    if (!itemCOBJs.ContainsKey(createdItem.FormKey))
-                        itemCOBJs.Add(createdItem.FormKey, new List<FormKey>());
-                    itemCOBJs[createdItem.FormKey].Add(baseCOBJ.FormKey);
-                }
-
-                if (!itemBench.ContainsKey(createdItem.FormKey))
-                    itemBench.Add(createdItem.FormKey, baseCOBJ.WorkbenchKeyword.FormKey);
-
-                if (Settings.ShowDebugLogs)
-                {
-                    Console.WriteLine(
-                        $"Storing the {baseCOBJ.EditorID} COBJ {createdItemName.Name} connection"
-                    );
                 }
             }
 
@@ -446,7 +506,13 @@ namespace Hephaestus
                 itemKnowledgeReq.Add(createdItemFormKey, new());
 
                 // Only create a design blueprint if this is not a basic item
-                if (!Settings.BasicItems.Contains(createdItemFormKey))
+                if (
+                    !Settings.BasicItems.Contains(createdItemFormKey)
+                    || (
+                        createdItemKeywords.Keywords != null
+                        && !createdItemKeywords.Keywords.Contains(Skyrim.Keyword.DaedricArtifact)
+                    )
+                )
                 {
                     if (Settings.ShowDebugLogs)
                     {
@@ -494,7 +560,7 @@ namespace Hephaestus
                     Spell knowledge = state.PatchMod.Spells.AddNew();
 
                     knowledge.EditorID = $"{materialPartEditorID}Knowledge";
-                    knowledge.Name = $"Crafting Knowledge - Design: {materialPartName}";
+                    knowledge.Name = $"{materialPartName} - Assembly Knowledge";
                     knowledge.MenuDisplayObject = new FormLinkNullable<IStaticGetter>(bookStatic);
                     knowledge.ObjectBounds = bookStatic.ObjectBounds.DeepCopy();
                     knowledge.EquipmentType = new FormLinkNullable<IEquipTypeGetter>(
@@ -504,12 +570,36 @@ namespace Hephaestus
                     knowledge.CastType = CastType.ConstantEffect;
                     knowledge.TargetType = TargetType.Self;
 
+                    // Create the knowledge "perk" mgef
+                    MagicEffect knowledgeMGEF = state.PatchMod.MagicEffects.AddNew();
+
+                    knowledgeMGEF.EditorID = $"{materialPartEditorID}KnowledgeMGEF";
+                    knowledgeMGEF.Name = $"{materialPartName} - Assembly Knowledge";
+                    knowledgeMGEF.Description = $"I now know how to craft {materialPartName}";
+                    knowledgeMGEF.MenuDisplayObject = new FormLinkNullable<IStaticGetter>(
+                        bookStatic
+                    );
+                    if (Settings.HideKnowledgeUI)
+                        knowledgeMGEF.Flags = MagicEffect.Flag.HideInUI;
+                    knowledgeMGEF.CastType = CastType.ConstantEffect;
+                    knowledgeMGEF.TargetType = TargetType.Self;
+                    knowledgeMGEF.EquipAbility = new FormLinkNullable<ISpellGetter>(knowledge);
+                    ;
+
+                    knowledge.Effects.Add(
+                        new Effect()
+                        {
+                            BaseEffect = new FormLinkNullable<IMagicEffectGetter>(knowledgeMGEF),
+                            Data = new() { Magnitude = 1f }
+                        }
+                    );
+
                     // create a new book
                     Book book = state.PatchMod.Books.AddNew();
 
                     // Set the book properties
                     book.EditorID = $"{materialPartEditorID}Schematic";
-                    book.Name = $"{materialPartName} Schematic";
+                    book.Name = $"{materialPartName} - Assembly Schematic";
                     book.Description =
                         $"A schematic describing the Design of {aAn}{materialPartName}. I should read this to memorize it — or perhaps I can sell it instead...";
                     book.Value = 10;
@@ -532,7 +622,7 @@ namespace Hephaestus
 
                     // Set the book properties
                     bookFragment.EditorID = $"{book.EditorID}Fragment";
-                    bookFragment.Name = $"{materialPartName} Notes";
+                    bookFragment.Name = $"{materialPartName} - Assembly Notes";
                     bookFragment.Description =
                         $"My notes on the crafting process of {aAn}{materialPartName}.¨If I collect a few more I can perhaps combine them into a schematic...";
                     bookFragment.Value = 2;
@@ -595,15 +685,13 @@ namespace Hephaestus
                         }
                     );
 
-                    // Create COBJ mats -> fragment
-                    var matToNoteCOBJ = state.PatchMod.ConstructibleObjects.AddNew();
+                    // Breakdown Recipe
+                    var itemToBookCOBJ = state.PatchMod.ConstructibleObjects.AddNew();
 
-                    matToNoteCOBJ.EditorID = $"{materialPartEditorID}RecipeFragment";
-                    matToNoteCOBJ.CreatedObject = new FormLinkNullable<IConstructibleGetter>(
-                        book.FormKey
-                    );
+                    itemToBookCOBJ.EditorID = $"{materialPartEditorID}BreakdownRecipe";
+                    itemToBookCOBJ.CreatedObject = new FormLinkNullable<IConstructibleGetter>(book);
 
-                    matToNoteCOBJ.Items = new ExtendedList<ContainerEntry>
+                    itemToBookCOBJ.Items = new ExtendedList<ContainerEntry>
                     {
                         new ContainerEntry()
                         {
@@ -614,32 +702,88 @@ namespace Hephaestus
                             },
                         }
                     };
-                    matToNoteCOBJ.WorkbenchKeyword = new FormLinkNullable<IKeywordGetter>(
+
+                    itemToBookCOBJ.WorkbenchKeyword = new FormLinkNullable<IKeywordGetter>(
                         itemBench[createdItemFormKey]
                     );
-                    matToNoteCOBJ.CreatedObjectCount = (ushort?)matToNoteCOBJ.Items.Count;
+                    itemToBookCOBJ.CreatedObjectCount = 1;
 
                     // Add conditions (so it doesn't clutter the menu)
-                    var matToNoteCOBJCond = new GetItemCountConditionData()
+                    var itemToBookCOBJCond = new GetItemCountConditionData()
                     {
                         RunOnType = Condition.RunOnType.Reference,
                         Reference = Skyrim.PlayerRef,
                     };
                     ;
-                    matToNoteCOBJCond.ItemOrList = new FormLinkOrIndex<IItemOrListGetter>(
-                        matToNoteCOBJCond,
+                    itemToBookCOBJCond.ItemOrList = new FormLinkOrIndex<IItemOrListGetter>(
+                        itemToBookCOBJCond,
                         createdItemFormKey
                     );
-                    matToNoteCOBJCond.ItemOrList.Link.SetTo(bookFragment);
+                    itemToBookCOBJCond.ItemOrList.Link.SetTo(createdItemFormKey);
 
-                    matToNoteCOBJ.Conditions.Add(
+                    itemToBookCOBJ.Conditions.Add(
                         new ConditionFloat()
                         {
                             ComparisonValue = 1,
                             CompareOperator = CompareOperator.GreaterThanOrEqualTo,
-                            Data = matToNoteCOBJCond
+                            Data = itemToBookCOBJCond
                         }
                     );
+
+                    // Create COBJ mats -> fragment
+                    var matToNoteCOBJ = state.PatchMod.ConstructibleObjects.AddNew();
+
+                    matToNoteCOBJ.EditorID = $"{materialPartEditorID}RecipeFragment";
+                    matToNoteCOBJ.CreatedObject = new FormLinkNullable<IConstructibleGetter>(
+                        bookFragment.FormKey
+                    );
+
+                    matToNoteCOBJ.Items = new ExtendedList<ContainerEntry>();
+
+                    matToNoteCOBJ.WorkbenchKeyword = new FormLinkNullable<IKeywordGetter>(
+                        itemBench[createdItemFormKey]
+                    );
+                    matToNoteCOBJ.CreatedObjectCount = (ushort?)matToNoteCOBJ.Items.Count;
+
+                    foreach (var materialName in itemMaterials[createdItemFormKey])
+                    {
+                        var material = Settings.MaterialWhitelist.First(e =>
+                            e.Name == materialName
+                        );
+
+                        matToNoteCOBJ.Items.Add(
+                            new()
+                            {
+                                Item = new()
+                                {
+                                    Item = new FormLink<IItemGetter>(material.Ingot.FormKey),
+                                    Count = 1
+                                }
+                            }
+                        );
+
+                        // Add conditions (so it doesn't clutter the menu)
+                        var matToNoteCOBJCond = new GetItemCountConditionData()
+                        {
+                            RunOnType = Condition.RunOnType.Reference,
+                            Reference = Skyrim.PlayerRef,
+                        };
+                        ;
+                        matToNoteCOBJCond.ItemOrList = new FormLinkOrIndex<IItemOrListGetter>(
+                            matToNoteCOBJCond,
+                            material.Ingot.FormKey
+                        );
+                        matToNoteCOBJCond.ItemOrList.Link.SetTo(material.Ingot.FormKey);
+
+                        matToNoteCOBJ.Conditions.Add(
+                            new ConditionFloat()
+                            {
+                                ComparisonValue = 1,
+                                CompareOperator = CompareOperator.GreaterThanOrEqualTo,
+                                Data = matToNoteCOBJCond
+                            }
+                        );
+                    }
 
                     // Do not show cobjs if lacking skill
                     if (
@@ -651,6 +795,7 @@ namespace Hephaestus
                         foreach (var cond in initialCOBJ.Conditions)
                         {
                             noteToBookCOBJ.Conditions.Add(cond.DeepCopy());
+                            itemToBookCOBJ.Conditions.Add(cond.DeepCopy());
                             matToNoteCOBJ.Conditions.Add(cond.DeepCopy());
                         }
 
@@ -662,15 +807,46 @@ namespace Hephaestus
                             book.FormKey,
                             bookFragment.FormKey,
                             noteToBookCOBJ.FormKey,
+                            itemToBookCOBJ.FormKey,
                             matToNoteCOBJ.FormKey
                         }
                     );
 
+                    // Add conditions (so it doesn't clutter the menu)
+                    if (Settings.HideOnceUnlocked)
+                    {
+                        var knowledgeCondData = new HasSpellConditionData()
+                        {
+                            RunOnType = Condition.RunOnType.Reference,
+                            Reference = Skyrim.PlayerRef,
+                        };
+
+                        knowledgeCondData.Spell = new FormLinkOrIndex<ISpellGetter>(
+                            knowledgeCondData,
+                            knowledge.FormKey
+                        );
+                        knowledgeCondData.Spell.Link.SetTo(knowledge);
+
+                        var knowledgeCond = new ConditionFloat()
+                        {
+                            ComparisonValue = 0,
+                            CompareOperator = CompareOperator.EqualTo,
+                            Data = knowledgeCondData
+                        };
+
+                        itemToBookCOBJ.Conditions.Add(knowledgeCond);
+                        noteToBookCOBJ.Conditions.Add(knowledgeCond);
+                        matToNoteCOBJ.Conditions.Add(knowledgeCond);
+                    }
+
                     if (Settings.ShowDebugLogs)
                     {
+                        Console.WriteLine($"Created item design perk: {knowledge.Name}");
+                        Console.WriteLine($"Created item design book (gives perk): {book.Name}");
                         Console.WriteLine(
-                            $"Created {knowledge.Name}, {book.Name}, and {bookFragment.Name}"
+                            $"Created item design book fragment (gives book): {bookFragment.Name}"
                         );
+                        Console.WriteLine($"-------------------------------");
                     }
 
                     // Add to req list
@@ -689,74 +865,83 @@ namespace Hephaestus
                     // loop through all part keywords, eg: light helmet, etc. skip if not valid
                     foreach (var partKey in Settings.PartList)
                     {
-                        if (!createdItemKeywords.Keywords.Contains(partKey.Keyword))
+                        if (!partKey.Keywords.All(e => createdItemKeywords.Keywords.Contains(e)))
                             continue;
 
                         foreach (var material in itemMaterials[createdItemFormKey])
                         {
                             foreach (var part in partKey.List)
                             {
-                                // Create COBJ fragment -> book
-                                var itemToBookCOBJ = state.PatchMod.ConstructibleObjects.AddNew();
-
-                                itemToBookCOBJ.EditorID =
-                                    $"{createdItemName.Name.Replace(" ", "")}{part.Name.Replace(" ", "")}BreakdownRecipe";
-                                itemToBookCOBJ.CreatedObject =
-                                    new FormLinkNullable<IConstructibleGetter>(
-                                        bookKnowledge[partDict[material][part.Name]][0]
-                                    );
-
-                                itemToBookCOBJ.Items = new ExtendedList<ContainerEntry>
-                                {
-                                    new ContainerEntry()
-                                    {
-                                        Item = new ContainerItem()
-                                        {
-                                            Item = new FormLink<IItemGetter>(createdItemFormKey),
-                                            Count = 1
-                                        },
-                                    }
-                                };
-                                itemToBookCOBJ.WorkbenchKeyword =
-                                    new FormLinkNullable<IKeywordGetter>(
-                                        itemBench[createdItemFormKey]
-                                    );
-                                itemToBookCOBJ.CreatedObjectCount = 1;
-
-                                // Add conditions (so it doesn't clutter the menu)
-                                var itemToBookCOBJCond = new GetItemCountConditionData()
-                                {
-                                    RunOnType = Condition.RunOnType.Reference,
-                                    Reference = Skyrim.PlayerRef,
-                                };
-                                ;
-                                itemToBookCOBJCond.ItemOrList =
-                                    new FormLinkOrIndex<IItemOrListGetter>(
-                                        itemToBookCOBJCond,
-                                        createdItemFormKey
-                                    );
-                                itemToBookCOBJCond.ItemOrList.Link.SetTo(createdItemFormKey);
-
-                                itemToBookCOBJ.Conditions.Add(
-                                    new ConditionFloat()
-                                    {
-                                        ComparisonValue = 1,
-                                        CompareOperator = CompareOperator.GreaterThanOrEqualTo,
-                                        Data = itemToBookCOBJCond
-                                    }
-                                );
-
-                                // Do not show cobjs if lacking skill
                                 if (
-                                    state.LinkCache.TryResolve<IConstructibleObjectGetter>(
-                                        itemCOBJs[createdItemFormKey][0],
-                                        out var initialCOBJ
+                                    !createdItemKeywords.Keywords.Contains(
+                                        Skyrim.Keyword.DaedricArtifact
                                     )
                                 )
-                                    foreach (var cond in initialCOBJ.Conditions)
+                                {
+                                    var itemToBookCOBJ =
+                                        state.PatchMod.ConstructibleObjects.AddNew();
+
+                                    itemToBookCOBJ.EditorID =
+                                        $"{createdItemName.Name.Replace(" ", "")}{part.Name.Replace(" ", "")}BreakdownRecipe";
+                                    itemToBookCOBJ.CreatedObject =
+                                        new FormLinkNullable<IConstructibleGetter>(
+                                            bookKnowledge[partDict[material][part.Name]][0]
+                                        );
+
+                                    itemToBookCOBJ.Items = new ExtendedList<ContainerEntry>
                                     {
-                                        itemToBookCOBJ.Conditions.Add(cond.DeepCopy());
-                                    }
+                                        new ContainerEntry()
+                                        {
+                                            Item = new ContainerItem()
+                                            {
+                                                Item = new FormLink<IItemGetter>(
+                                                    createdItemFormKey
+                                                ),
+                                                Count = 1
+                                            },
+                                        }
+                                    };
+                                    itemToBookCOBJ.WorkbenchKeyword =
+                                        new FormLinkNullable<IKeywordGetter>(
+                                            itemBench[createdItemFormKey]
+                                        );
+                                    itemToBookCOBJ.CreatedObjectCount = 1;
+
+                                    // Add conditions (so it doesn't clutter the menu)
+                                    var itemToBookCOBJCond = new GetItemCountConditionData()
+                                    {
+                                        RunOnType = Condition.RunOnType.Reference,
+                                        Reference = Skyrim.PlayerRef,
+                                    };
+                                    ;
+                                    itemToBookCOBJCond.ItemOrList =
+                                        new FormLinkOrIndex<IItemOrListGetter>(
+                                            itemToBookCOBJCond,
+                                            createdItemFormKey
+                                        );
+                                    itemToBookCOBJCond.ItemOrList.Link.SetTo(createdItemFormKey);
+
+                                    itemToBookCOBJ.Conditions.Add(
+                                        new ConditionFloat()
+                                        {
+                                            ComparisonValue = 1,
+                                            CompareOperator = CompareOperator.GreaterThanOrEqualTo,
+                                            Data = itemToBookCOBJCond
+                                        }
+                                    );
+
+                                    // Do not show cobjs if lacking skill
+                                    if (
+                                        state.LinkCache.TryResolve<IConstructibleObjectGetter>(
+                                            itemCOBJs[createdItemFormKey][0],
+                                            out var initialCOBJ
+                                        )
+                                    )
+                                        foreach (var cond in initialCOBJ.Conditions)
+                                        {
+                                            itemToBookCOBJ.Conditions.Add(cond.DeepCopy());
+                                        }
+                                }
 
                                 // Add item to knowledge req
                                 itemKnowledgeReq[createdItemFormKey].Add(
@@ -787,27 +972,27 @@ namespace Hephaestus
 
                     var modifiedCOBJ = state.PatchMod.ConstructibleObjects.GetOrAddAsOverride(cobj);
 
-                    foreach (var perk in itemKnowledgeReq[createdItemFormKey])
+                    foreach (var knowledge in itemKnowledgeReq[createdItemFormKey])
                     {
                         // Add conditions (so it doesn't clutter the menu)
-                        var knowledgeCond = new GetItemCountConditionData()
+                        var knowledgeCondData = new HasSpellConditionData()
                         {
                             RunOnType = Condition.RunOnType.Reference,
                             Reference = Skyrim.PlayerRef,
                         };
                         ;
-                        knowledgeCond.ItemOrList = new FormLinkOrIndex<IItemOrListGetter>(
-                            knowledgeCond,
-                            perk
+                        knowledgeCondData.Spell = new FormLinkOrIndex<ISpellGetter>(
+                            knowledgeCondData,
+                            knowledge
                         );
-                        knowledgeCond.ItemOrList.Link.SetTo(perk);
+                        knowledgeCondData.Spell.Link.SetTo(knowledge);
 
                         modifiedCOBJ.Conditions.Add(
                             new ConditionFloat()
                             {
                                 ComparisonValue = 1,
                                 CompareOperator = CompareOperator.GreaterThanOrEqualTo,
-                                Data = knowledgeCond
+                                Data = knowledgeCondData
                             }
                         );
                     }
@@ -832,9 +1017,7 @@ namespace Hephaestus
                     )
                         continue;
 
-                    LeveledItem modifiedLVLI = state.PatchMod.LeveledItems.GetOrAddAsOverride(
-                        leveledList
-                    );
+                    LeveledItem modifiedLVLI = leveledList.DeepCopy();
 
                     var itemList = modifiedLVLI.Entries;
                     if (itemList == null)
@@ -861,7 +1044,8 @@ namespace Hephaestus
                             LeveledItem itemLVLI = state.PatchMod.LeveledItems.AddNew();
 
                             itemLVLI.ChanceNone = 0;
-                            itemLVLI.EditorID = $"{createdItemName.Name}SchematicsLVLI";
+                            itemLVLI.EditorID =
+                                $"{createdItemName.Name.Replace(" ", "")}WithSchematicsLVLI";
                             itemLVLI.Entries = new ExtendedList<LeveledItemEntry>();
 
                             // add the item first
@@ -942,8 +1126,6 @@ namespace Hephaestus
 
                     if (modifiedCount != 0)
                         state.PatchMod.LeveledItems.Set(modifiedLVLI);
-                    else
-                        state.PatchMod.LeveledItems.Remove(modifiedLVLI);
                 }
             }
 
@@ -956,7 +1138,9 @@ namespace Hephaestus
             {
                 foreach (string partName in partListUniques.Keys)
                 {
-                    var knowledge = partDict[material.Keyword.FormKey][partName];
+                    var knowledge = partDict[material.Name][partName];
+                    if (!state.LinkCache.TryResolve<ISpellGetter>(knowledge, out var knowledgeRef))
+                        continue;
 
                     if (!safeToKeepKnowledge.Contains(knowledge))
                     {
@@ -964,10 +1148,12 @@ namespace Hephaestus
                         state.PatchMod.Books.Remove(bookKnowledge[knowledge][1]);
                         state.PatchMod.ConstructibleObjects.Remove(bookKnowledge[knowledge][2]);
                         state.PatchMod.ConstructibleObjects.Remove(bookKnowledge[knowledge][3]);
+                        state.PatchMod.MagicEffects.Remove(
+                            knowledgeRef.Effects[0].BaseEffect.FormKey
+                        );
                         state.PatchMod.Spells.Remove(knowledge);
-                        Console.WriteLine($"Removing {material.Name} {partName} ...");
+                        Console.WriteLine($"Removed {material.Name} {partName}");
                     }
-                    ;
                 }
             }
 
