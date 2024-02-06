@@ -9,8 +9,8 @@ using Noggog;
 namespace Hephaestus
 {
     // To do
-    // custom crafting spell to move items around?
     // refactor code, too much duplicated initializations of books, book fragments, conds, etc.
+    // Dialogue options to blacksmiths to tell you about each item type and what it can craft?
 
     public class Program
     {
@@ -54,6 +54,189 @@ namespace Hephaestus
                 LootLVLIWhitelist.AddRange(GenData.LootLVLIWhitelistBlacksmith);
             if (Settings.DistributeSpecial)
                 LootLVLIWhitelist.AddRange(GenData.LootLVLIWhitelistSpecial);
+
+            // Furniture prep
+            string sourcePath = state.RetrieveInternalFile("_camp_craftingobjecteffectscript.pex");
+            string destPath = Path.Combine(
+                state.DataFolderPath,
+                "Scripts",
+                "_camp_craftingobjecteffectscript.pex"
+            );
+            if (!File.Exists(destPath))
+                File.Copy(sourcePath, destPath, true);
+
+            // Create the keywords
+            Keyword dummyForgeKeyword = state.PatchMod.Keywords.AddNew();
+            dummyForgeKeyword.EditorID = "Hephaestus_ForgeMenu";
+
+            // Create the furniture
+            Furniture dummyForge =
+                new(state.PatchMod)
+                {
+                    Name = "Forge Kit",
+                    EditorID = "Hephaestus_ForgeMenu_Furniture",
+                    Model = new() { File = "Furniture\\SitCrossLeggedMarker.nif" },
+                    InteractionKeyword = new FormLinkNullable<IKeywordGetter>(
+                        Skyrim.Keyword.ActorTypeNPC.FormKey
+                    ),
+                    Keywords = new() { dummyForgeKeyword },
+                    Flags = Furniture.Flag.MustExitToTalk,
+                    WorkbenchData = new()
+                    {
+                        BenchType = WorkbenchData.Type.CreateObject,
+                        UsesSkill = Skill.Smithing
+                    },
+                };
+            state.PatchMod.Furniture.Set(dummyForge);
+
+            // place the furniture
+            PlacedObject dummyForgeRef =
+                new(state.PatchMod)
+                {
+                    EditorID = "Hephaestus_ForgeMenu_Furniture",
+                    Base = new FormLinkNullable<IFurnitureGetter>(dummyForge.FormKey),
+                    Placement = new()
+                    {
+                        Position = new()
+                        {
+                            X = 0,
+                            Y = 0,
+                            Z = -3000
+                        },
+                        Rotation = new()
+                        {
+                            X = 0,
+                            Y = 0,
+                            Z = 0
+                        }
+                    }
+                };
+
+            var cellContext = state.LinkCache.ResolveContext<ICell, ICellGetter>(
+                Skyrim.Cell.QASmoke.FormKey
+            );
+            var overrideCell = cellContext.GetOrAddAsOverride(state.PatchMod);
+            overrideCell.Temporary.Add(dummyForgeRef);
+
+            // create the message
+            Message mountedMessage =
+                new(state.PatchMod)
+                {
+                    EditorID = "HephaestusMountedMessage",
+                    Description = "You cannot research while mounted.",
+                    DisplayTime = 2,
+                };
+            state.PatchMod.Messages.Set(mountedMessage);
+
+            // Create the furniture effect
+            MagicEffect pseudoForgeActivator =
+                new(state.PatchMod)
+                {
+                    EditorID = $"pseudoForgeActivator",
+                    MenuDisplayObject = new FormLinkNullable<IStaticGetter>(
+                        Skyrim.Static.BlacksmithAnvilStatic.FormKey
+                    ),
+                    CastType = CastType.FireAndForget,
+                    TargetType = TargetType.Self,
+                    Flags =
+                        MagicEffect.Flag.HideInUI
+                        | MagicEffect.Flag.NoDuration
+                        | MagicEffect.Flag.NoMagnitude
+                        | MagicEffect.Flag.NoArea,
+                    CastingSoundLevel = SoundLevel.Loud,
+                    VirtualMachineAdapter = new()
+                    {
+                        Version = 5,
+                        ObjectFormat = 2,
+                        Scripts = new()
+                        {
+                            new ScriptEntry()
+                            {
+                                Name = "_Camp_CraftingObjectEffectScript",
+                                Flags = ScriptEntry.Flag.Local,
+                                Properties = new()
+                                {
+                                    new ScriptObjectProperty()
+                                    {
+                                        Name = "PlayerRef",
+                                        Flags = ScriptProperty.Flag.Edited,
+                                        Object = Skyrim.PlayerRef
+                                    },
+                                    new ScriptObjectProperty()
+                                    {
+                                        Name = "_Camp_CraftingObjectREF",
+                                        Flags = ScriptProperty.Flag.Edited,
+                                        Object = new FormLinkNullable<IPlacedObjectGetter>(
+                                            dummyForgeRef.FormKey
+                                        )
+                                    },
+                                    new ScriptObjectProperty()
+                                    {
+                                        Name = "_Camp_GeneralError_Mounted",
+                                        Flags = ScriptProperty.Flag.Edited,
+                                        Object = new FormLinkNullable<IMessageGetter>(
+                                            mountedMessage.FormKey
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                };
+            state.PatchMod.MagicEffects.Set(pseudoForgeActivator);
+
+            // Create the pseudoForgeSpell "perk"
+            Spell pseudoForgeSpell =
+                new(state.PatchMod)
+                {
+                    EditorID = "pseudoForgeSpell",
+                    Name = "Research - Forge Kit",
+                    Description = "Use your smithing knowledge to study forged items.",
+                    MenuDisplayObject = new FormLinkNullable<IStaticGetter>(
+                        Skyrim.Static.BlacksmithAnvilStatic.FormKey
+                    ),
+                    EquipmentType = new FormLinkNullable<IEquipTypeGetter>(
+                        Skyrim.EquipType.Voice.FormKey
+                    ),
+                    Type = SpellType.LesserPower,
+                    CastType = CastType.FireAndForget,
+                    TargetType = TargetType.Self,
+
+                    Effects = new()
+                    {
+                        new Effect()
+                        {
+                            BaseEffect = new FormLinkNullable<IMagicEffectGetter>(
+                                pseudoForgeActivator
+                            ),
+                            Data = new(),
+                        }
+                    }
+                };
+            state.PatchMod.Spells.Set(pseudoForgeSpell);
+
+            // Create the quest to distribute it
+            Quest pseudoForgeDistribute =
+                new(state.PatchMod)
+                {
+                    EditorID = "Hephaestus_SpellDistributor",
+                    Flags = Quest.Flag.StartGameEnabled,
+                    Stages = new()
+                    {
+                        new() { Index = 0, Flags = QuestStage.Flag.StartUpStage }
+                    },
+                    Aliases = new()
+                    {
+                        new()
+                        {
+                            ForcedReference = new FormLinkNullable<IPlacedNpcGetter>(
+                                Skyrim.PlayerRef.FormKey
+                            ),
+                            Spells = new() { pseudoForgeSpell }
+                        }
+                    }
+                };
+            state.PatchMod.Quests.Set(pseudoForgeDistribute);
 
             // Generate unique list of parts
             Dictionary<string, PartData> partListUniques = new();
@@ -704,7 +887,8 @@ namespace Hephaestus
                     };
 
                     itemToBookCOBJ.WorkbenchKeyword = new FormLinkNullable<IKeywordGetter>(
-                        itemBench[createdItemFormKey]
+                        // itemBench[createdItemFormKey]
+                        dummyForgeKeyword.FormKey
                     );
                     itemToBookCOBJ.CreatedObjectCount = 1;
 
@@ -944,9 +1128,8 @@ namespace Hephaestus
                                 }
 
                                 // Add item to knowledge req
-                                itemKnowledgeReq[createdItemFormKey].Add(
-                                    partDict[material][part.Name]
-                                );
+                                itemKnowledgeReq[createdItemFormKey]
+                                    .Add(partDict[material][part.Name]);
 
                                 if (Settings.ShowDebugLogs)
                                 {
