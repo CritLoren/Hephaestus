@@ -23,6 +23,15 @@ Create a Dictionary<IItemGetter.FormKey, List<ISpellGetter.FormKey>> itemKnowled
 Create a Dictionary<IItemGetter.FormKey, List<IKeywordGetter.FormKey>> itemMaterials
                     iron sword > iron
 
+create keyword for leather working, cloth working, metal working
+
+for each part bench keyword
+    create a new keyword to swap it to for dismantling
+        call the generate custom menu option
+    create a new keyword to swap it to for processing
+        call the generate custom menu option
+    add both keywords to benchKeywordSwap
+
 Loop through each material in materialWhitelist
     Add an entry to partDict with the material as a key and a dictionary
     Loop through all partList distinct values

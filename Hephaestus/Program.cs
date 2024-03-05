@@ -2,6 +2,7 @@ using Mutagen.Bethesda;
 using Mutagen.Bethesda.FormKeys.SkyrimSE;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Plugins.Aspects;
+using Mutagen.Bethesda.Plugins.Records;
 using Mutagen.Bethesda.Skyrim;
 using Mutagen.Bethesda.Synthesis;
 using Noggog;
@@ -10,7 +11,7 @@ namespace Hephaestus
 {
     // To do
     // refactor code, too much duplicated initializations of books, book fragments, conds, etc.
-    // Dialogue options to blacksmiths to tell you about each item type and what it can craft?
+    // Dialogue options to blacksmiths to tell you about each item type and what it can craft? Even better, have two powers, one for breaking down (Research) and another for drawing up schematics (putting them together; Drawing)
 
     public class Program
     {
@@ -29,12 +30,14 @@ namespace Hephaestus
 
         private static void RunPatch(IPatcherState<ISkyrimMod, ISkyrimModGetter> state)
         {
+            Dictionary<string, PartData> partListUniques = new();
             Dictionary<string, Dictionary<string, FormKey>> partDict = new();
             Dictionary<FormKey, List<FormKey>> bookKnowledge = new();
             Dictionary<FormKey, List<FormKey>> itemCOBJs = new();
             Dictionary<FormKey, List<FormKey>> itemKnowledgeReq = new();
             Dictionary<FormKey, List<string>> itemMaterials = new();
             Dictionary<FormKey, FormKey> itemBench = new();
+            Dictionary<FormKey, Dictionary<string, FormKey>> benchKeywordSwap = new();
             List<FormKey> noValidMats = new();
             List<FormKey> safeToKeepKnowledge = new();
             Dictionary<FormKey, FormKey> itemLVLIEntries = new();
@@ -55,7 +58,7 @@ namespace Hephaestus
             if (Settings.DistributeSpecial)
                 LootLVLIWhitelist.AddRange(GenData.LootLVLIWhitelistSpecial);
 
-            // Furniture prep
+            // Copy the script (if necessary)
             string sourcePath = state.RetrieveInternalFile("_camp_craftingobjecteffectscript.pex");
             string destPath = Path.Combine(
                 state.DataFolderPath,
@@ -65,60 +68,7 @@ namespace Hephaestus
             if (!File.Exists(destPath))
                 File.Copy(sourcePath, destPath, true);
 
-            // Create the keywords
-            Keyword dummyForgeKeyword = state.PatchMod.Keywords.AddNew();
-            dummyForgeKeyword.EditorID = "Hephaestus_ForgeMenu";
-
-            // Create the furniture
-            Furniture dummyForge =
-                new(state.PatchMod)
-                {
-                    Name = "Forge Kit",
-                    EditorID = "Hephaestus_ForgeMenu_Furniture",
-                    Model = new() { File = "Furniture\\SitCrossLeggedMarker.nif" },
-                    InteractionKeyword = new FormLinkNullable<IKeywordGetter>(
-                        Skyrim.Keyword.ActorTypeNPC.FormKey
-                    ),
-                    Keywords = new() { dummyForgeKeyword },
-                    Flags = Furniture.Flag.MustExitToTalk,
-                    WorkbenchData = new()
-                    {
-                        BenchType = WorkbenchData.Type.CreateObject,
-                        UsesSkill = Skill.Smithing
-                    },
-                };
-            state.PatchMod.Furniture.Set(dummyForge);
-
-            // place the furniture
-            PlacedObject dummyForgeRef =
-                new(state.PatchMod)
-                {
-                    EditorID = "Hephaestus_ForgeMenu_Furniture",
-                    Base = new FormLinkNullable<IFurnitureGetter>(dummyForge.FormKey),
-                    Placement = new()
-                    {
-                        Position = new()
-                        {
-                            X = 0,
-                            Y = 0,
-                            Z = -3000
-                        },
-                        Rotation = new()
-                        {
-                            X = 0,
-                            Y = 0,
-                            Z = 0
-                        }
-                    }
-                };
-
-            var cellContext = state.LinkCache.ResolveContext<ICell, ICellGetter>(
-                Skyrim.Cell.QASmoke.FormKey
-            );
-            var overrideCell = cellContext.GetOrAddAsOverride(state.PatchMod);
-            overrideCell.Temporary.Add(dummyForgeRef);
-
-            // create the message
+            // Message that appears when trying to dismantle/process while mounted
             Message mountedMessage =
                 new(state.PatchMod)
                 {
@@ -128,98 +78,11 @@ namespace Hephaestus
                 };
             state.PatchMod.Messages.Set(mountedMessage);
 
-            // Create the furniture effect
-            MagicEffect pseudoForgeActivator =
+            // Quest to give the player spells at the beginning of the game
+            Quest hephaestusStartGameGiver =
                 new(state.PatchMod)
                 {
-                    EditorID = $"pseudoForgeActivator",
-                    MenuDisplayObject = new FormLinkNullable<IStaticGetter>(
-                        Skyrim.Static.BlacksmithAnvilStatic.FormKey
-                    ),
-                    CastType = CastType.FireAndForget,
-                    TargetType = TargetType.Self,
-                    Flags =
-                        MagicEffect.Flag.HideInUI
-                        | MagicEffect.Flag.NoDuration
-                        | MagicEffect.Flag.NoMagnitude
-                        | MagicEffect.Flag.NoArea,
-                    CastingSoundLevel = SoundLevel.Loud,
-                    VirtualMachineAdapter = new()
-                    {
-                        Version = 5,
-                        ObjectFormat = 2,
-                        Scripts = new()
-                        {
-                            new ScriptEntry()
-                            {
-                                Name = "_Camp_CraftingObjectEffectScript",
-                                Flags = ScriptEntry.Flag.Local,
-                                Properties = new()
-                                {
-                                    new ScriptObjectProperty()
-                                    {
-                                        Name = "PlayerRef",
-                                        Flags = ScriptProperty.Flag.Edited,
-                                        Object = Skyrim.PlayerRef
-                                    },
-                                    new ScriptObjectProperty()
-                                    {
-                                        Name = "_Camp_CraftingObjectREF",
-                                        Flags = ScriptProperty.Flag.Edited,
-                                        Object = new FormLinkNullable<IPlacedObjectGetter>(
-                                            dummyForgeRef.FormKey
-                                        )
-                                    },
-                                    new ScriptObjectProperty()
-                                    {
-                                        Name = "_Camp_GeneralError_Mounted",
-                                        Flags = ScriptProperty.Flag.Edited,
-                                        Object = new FormLinkNullable<IMessageGetter>(
-                                            mountedMessage.FormKey
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                };
-            state.PatchMod.MagicEffects.Set(pseudoForgeActivator);
-
-            // Create the pseudoForgeSpell "perk"
-            Spell pseudoForgeSpell =
-                new(state.PatchMod)
-                {
-                    EditorID = "pseudoForgeSpell",
-                    Name = "Research - Forge Kit",
-                    Description = "Use your smithing knowledge to study forged items.",
-                    MenuDisplayObject = new FormLinkNullable<IStaticGetter>(
-                        Skyrim.Static.BlacksmithAnvilStatic.FormKey
-                    ),
-                    EquipmentType = new FormLinkNullable<IEquipTypeGetter>(
-                        Skyrim.EquipType.Voice.FormKey
-                    ),
-                    Type = SpellType.LesserPower,
-                    CastType = CastType.FireAndForget,
-                    TargetType = TargetType.Self,
-
-                    Effects = new()
-                    {
-                        new Effect()
-                        {
-                            BaseEffect = new FormLinkNullable<IMagicEffectGetter>(
-                                pseudoForgeActivator
-                            ),
-                            Data = new(),
-                        }
-                    }
-                };
-            state.PatchMod.Spells.Set(pseudoForgeSpell);
-
-            // Create the quest to distribute it
-            Quest pseudoForgeDistribute =
-                new(state.PatchMod)
-                {
-                    EditorID = "Hephaestus_SpellDistributor",
+                    EditorID = "Hephaestus_StartGameDistributor",
                     Flags = Quest.Flag.StartGameEnabled,
                     Stages = new()
                     {
@@ -227,19 +90,262 @@ namespace Hephaestus
                     },
                     Aliases = new()
                     {
-                        new()
-                        {
-                            ForcedReference = new FormLinkNullable<IPlacedNpcGetter>(
-                                Skyrim.PlayerRef.FormKey
-                            ),
-                            Spells = new() { pseudoForgeSpell }
-                        }
+                        new() { ForcedReference = Skyrim.PlayerRef.AsNullable(), Spells = new() }
                     }
                 };
-            state.PatchMod.Quests.Set(pseudoForgeDistribute);
+            state.PatchMod.Quests.Set(hephaestusStartGameGiver);
 
-            // Generate unique list of parts
-            Dictionary<string, PartData> partListUniques = new();
+            // Used as a dumping ground to call the furniture from when using the spells
+            var overrideCell = state
+                .LinkCache.ResolveContext<ICell, ICellGetter>(Skyrim.Cell.QASmoke.FormKey)
+                .GetOrAddAsOverride(state.PatchMod);
+
+            void GenerateCustomMenu(
+                IFormLinkGetter<IKeywordGetter> originalKeyword,
+                string benchType,
+                string benchName,
+                string processName,
+                string schematicTypeName,
+                IFormLinkNullable<IStaticGetter> menuStatic,
+                bool giveSmithingExp
+            )
+            {
+                // Create the keyword
+                Keyword benchKeyword = state.PatchMod.Keywords.AddNew();
+                benchKeyword.EditorID = $"Hephaestus_{benchName.Replace(" ", "")}Menu_{benchType}";
+
+                string benchNameID = $"{benchName.Replace(" ", "")}_{benchType}";
+                Furniture customMenuFurniture =
+                    new(state.PatchMod)
+                    {
+                        Name = benchName,
+                        EditorID = $"Hephaestus_{benchNameID}_Furniture",
+                        Model = new() { File = "Furniture\\SitCrossLeggedMarker.nif" },
+                        InteractionKeyword = new FormLinkNullable<IKeywordGetter>(
+                            Skyrim.Keyword.ActorTypeNPC.FormKey
+                        ),
+                        Flags = Furniture.Flag.MustExitToTalk,
+                        WorkbenchData = new() { BenchType = WorkbenchData.Type.CreateObject, },
+                        Keywords = new() { benchKeyword }
+                    };
+                if (giveSmithingExp)
+                    customMenuFurniture.WorkbenchData.UsesSkill = Skill.Smithing;
+                state.PatchMod.Furniture.Set(customMenuFurniture);
+
+                // place the furniture
+                PlacedObject customMenuPlacedReference =
+                    new(state.PatchMod)
+                    {
+                        EditorID = $"Hephaestus_{benchNameID}_Reference",
+                        Base = customMenuFurniture.ToNullableLink(),
+                        Placement = new()
+                        {
+                            Position = new()
+                            {
+                                X = 0,
+                                Y = 0,
+                                Z = -3000
+                            },
+                            Rotation = new()
+                            {
+                                X = 0,
+                                Y = 0,
+                                Z = 0
+                            }
+                        }
+                    };
+                overrideCell.Temporary.Add(customMenuPlacedReference);
+
+                // Create the furniture effect
+                MagicEffect customMenuScriptDummy =
+                    new(state.PatchMod)
+                    {
+                        EditorID = $"Hephaestus_{benchNameID}_ScriptDummy",
+                        MenuDisplayObject = Skyrim.Static.BlacksmithAnvilStatic.AsNullable(),
+                        CastType = CastType.FireAndForget,
+                        TargetType = TargetType.Self,
+                        Flags =
+                            MagicEffect.Flag.HideInUI
+                            | MagicEffect.Flag.NoDuration
+                            | MagicEffect.Flag.NoMagnitude
+                            | MagicEffect.Flag.NoArea,
+                        CastingSoundLevel = SoundLevel.Loud,
+                        VirtualMachineAdapter = new()
+                        {
+                            Version = 5,
+                            ObjectFormat = 2,
+                            Scripts = new()
+                            {
+                                new ScriptEntry()
+                                {
+                                    Name = "_Camp_CraftingObjectEffectScript",
+                                    Flags = ScriptEntry.Flag.Local,
+                                    Properties = new()
+                                    {
+                                        new ScriptObjectProperty()
+                                        {
+                                            Name = "PlayerRef",
+                                            Flags = ScriptProperty.Flag.Edited,
+                                            Object = Skyrim.PlayerRef
+                                        },
+                                        new ScriptObjectProperty()
+                                        {
+                                            Name = "_Camp_CraftingObjectREF",
+                                            Flags = ScriptProperty.Flag.Edited,
+                                            Object = customMenuPlacedReference.ToNullableLink()
+                                        },
+                                        new ScriptObjectProperty()
+                                        {
+                                            Name = "_Camp_GeneralError_Mounted",
+                                            Flags = ScriptProperty.Flag.Edited,
+                                            Object = mountedMessage.ToNullableLink()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    };
+                state.PatchMod.MagicEffects.Set(customMenuScriptDummy);
+
+                Spell customMenuSpell =
+                    new(state.PatchMod)
+                    {
+                        EditorID = $"Hephaestus_{benchNameID}_Menu",
+                        Name = $"Research - {benchName}",
+                        Description = $"Learn how to {processName} at a {benchName}.",
+                        MenuDisplayObject = menuStatic,
+                        EquipmentType = Skyrim.EquipType.Voice.AsNullable(),
+                        Type = SpellType.LesserPower,
+                        CastType = CastType.FireAndForget,
+                        TargetType = TargetType.Self,
+
+                        Effects = new()
+                        {
+                            new Effect() { BaseEffect = customMenuScriptDummy.ToNullableLink(), }
+                        }
+                    };
+                state.PatchMod.Spells.Set(customMenuSpell);
+
+                Console.WriteLine(benchType);
+                Console.WriteLine(benchKeywordSwap[originalKeyword.FormKey].Count);
+
+                benchKeywordSwap[originalKeyword.FormKey].Add(benchType, benchKeyword.FormKey);
+                hephaestusStartGameGiver.Aliases.First().Spells.Add(customMenuSpell);
+            }
+            ;
+
+            void applyBookDefaults(string seed, Book book)
+            {
+                // Deterministic seed
+                var random = new Random(seed.GetHashCode());
+
+                // Randomize book model
+                var bookModelSetKey = GenData.bookModelLib.Keys.ElementAt(
+                    (int)Math.Round((GenData.bookModelLib.Count - 1) * (float)random.NextDouble())
+                );
+                if (!state.LinkCache.TryResolve<IStaticGetter>(bookModelSetKey, out var bookStatic))
+                    return;
+
+                // Randomize fragment model
+                var bookFragmentModelSetKey = GenData.bookFragmentModelLib.Keys.ElementAt(
+                    (int)
+                        Math.Round(
+                            (GenData.bookFragmentModelLib.Count - 1) * (float)random.NextDouble()
+                        )
+                );
+                if (
+                    !state.LinkCache.TryResolve<IStaticGetter>(
+                        bookFragmentModelSetKey,
+                        out var bookFragmentStatic
+                    )
+                )
+                    return;
+
+                book.Weight = 0.25f;
+                book.Model = GenData.bookModelLib[bookModelSetKey];
+                book.InventoryArt = bookStatic.ToNullableLink();
+                book.ObjectBounds = bookStatic.ObjectBounds.DeepCopy();
+                book.Type = Book.BookType.BookOrTome;
+                book.PickUpSound = new FormLinkNullable<ISoundDescriptorGetter>(
+                    Skyrim.SoundDescriptor.ITMNoteUp.FormKey
+                );
+                book.Keywords = new() { Skyrim.Keyword.VendorItemRecipe };
+
+                state.PatchMod.Books.Set(book);
+            }
+
+            void createTranslationCOBJ(
+                ConstructibleObject baseCOBJ,
+                IFormLink<IItemGetter> ingredient,
+                IFormLink<IConstructibleGetter> result,
+                FormLinkNullable<IKeywordGetter> benchKeyword,
+                IFormLink<ISpellGetter> knowledge,
+                int ingredientCount,
+                int recipeShowCount = 1
+            )
+            {
+                baseCOBJ.CreatedObject = result.AsNullable();
+
+                baseCOBJ.Items = new ExtendedList<ContainerEntry>
+                {
+                    new ContainerEntry()
+                    {
+                        Item = new ContainerItem() { Item = ingredient, Count = ingredientCount },
+                    }
+                };
+                baseCOBJ.WorkbenchKeyword = benchKeyword;
+                baseCOBJ.CreatedObjectCount = 1;
+
+                // Add conditions (so it doesn't clutter the menu)
+                var baseCOBJCond = new GetItemCountConditionData()
+                {
+                    RunOnType = Condition.RunOnType.Reference,
+                    Reference = Skyrim.PlayerRef,
+                };
+
+                baseCOBJCond.ItemOrList = new FormLinkOrIndex<IItemOrListGetter>(
+                    baseCOBJCond,
+                    ingredient.FormKey
+                );
+
+                baseCOBJCond.ItemOrList.Link.SetTo(ingredient.FormKey);
+
+                baseCOBJ.Conditions.Add(
+                    new ConditionFloat()
+                    {
+                        ComparisonValue = recipeShowCount,
+                        CompareOperator = CompareOperator.GreaterThanOrEqualTo,
+                        Data = baseCOBJCond
+                    }
+                );
+
+                // Add conditions (so it doesn't clutter the menu)
+                if (Settings.HideOnceUnlocked)
+                {
+                    var knowledgeCondData = new HasSpellConditionData()
+                    {
+                        RunOnType = Condition.RunOnType.Reference,
+                        Reference = Skyrim.PlayerRef,
+                    };
+
+                    knowledgeCondData.Spell = new FormLinkOrIndex<ISpellGetter>(
+                        knowledgeCondData,
+                        knowledge.FormKey
+                    );
+                    knowledgeCondData.Spell.Link.SetTo(knowledge);
+
+                    var knowledgeCond = new ConditionFloat()
+                    {
+                        ComparisonValue = 0,
+                        CompareOperator = CompareOperator.EqualTo,
+                        Data = knowledgeCondData
+                    };
+
+                    baseCOBJ.Conditions.Add(knowledgeCond);
+                }
+            }
+            ;
+
             foreach (var partEntry in Settings.PartList)
             {
                 foreach (var part in partEntry.List)
@@ -249,253 +355,141 @@ namespace Hephaestus
                 }
             }
 
+            foreach (var partBench in partListUniques)
+            {
+                var bench = Settings.BenchSettings.First(e =>
+                    e.Value.doesTemperOnly == false
+                    && e.Key.FormKey == partBench.Value.Bench.FormKey
+                );
+                if (!benchKeywordSwap.ContainsKey(bench.Key.FormKey))
+                    benchKeywordSwap.Add(bench.Key.FormKey, new());
+
+                if (!benchKeywordSwap[bench.Key.FormKey].ContainsKey("study"))
+                    GenerateCustomMenu(
+                        bench.Key,
+                        "study",
+                        bench.Value.BenchName,
+                        bench.Value.ProcessName,
+                        bench.Value.SchematicTypeName,
+                        bench.Value.BenchMenuStatic.AsNullable(),
+                        Settings.giveSmithingExp
+                    );
+
+                if (!benchKeywordSwap[bench.Key.FormKey].ContainsKey("break"))
+                    GenerateCustomMenu(
+                        bench.Key,
+                        "break",
+                        bench.Value.BenchName,
+                        bench.Value.ProcessName,
+                        bench.Value.SchematicTypeName,
+                        bench.Value.BenchMenuStatic.AsNullable(),
+                        Settings.giveSmithingExp
+                    );
+            }
+
             foreach (var material in Settings.MaterialWhitelist)
             {
-                partDict.Add(material.Name, new());
+                partDict.Add(material.Key, new());
 
                 foreach (string partName in partListUniques.Keys)
                 {
-                    string materialPartName = $"{material.Name} {partName}";
+                    string materialPartName = $"{material.Key} {partName}";
                     string materialPartEditorID = materialPartName.Replace(" ", "");
 
-                    // Deterministic seed
-                    var random = new Random(materialPartName.GetHashCode());
-
-                    // Randomize book model
-                    var bookModelSetKey = GenData.bookModelLib.Keys.ElementAt(
-                        (int)
-                            Math.Round(
-                                (GenData.bookModelLib.Count - 1) * (float)random.NextDouble()
-                            )
-                    );
-                    if (
-                        !state.LinkCache.TryResolve<IStaticGetter>(
-                            bookModelSetKey,
-                            out var bookStatic
-                        )
-                    )
-                        continue;
-
-                    // Randomize fragment model
-                    var bookFragmentModelSetKey = GenData.bookFragmentModelLib.Keys.ElementAt(
-                        (int)
-                            Math.Round(
-                                (GenData.bookFragmentModelLib.Count - 1)
-                                    * (float)random.NextDouble()
-                            )
-                    );
-                    if (
-                        !state.LinkCache.TryResolve<IStaticGetter>(
-                            bookFragmentModelSetKey,
-                            out var bookFragmentStatic
-                        )
-                    )
-                        continue;
+                    // create a new book
+                    Book book =
+                        new(state.PatchMod)
+                        {
+                            EditorID = $"{materialPartEditorID}_Schematic",
+                            Name = $"{materialPartName} - Part Schematic",
+                            Description =
+                                $"A schematic describing the process of crafting a {materialPartName}. I should read this to memorize it — or perhaps I can sell it instead...",
+                            Value = 10,
+                            Weight = 0.25f,
+                        };
+                    applyBookDefaults(materialPartName, book);
 
                     // Create the knowledge "perk"
-                    Spell knowledge = state.PatchMod.Spells.AddNew();
-
-                    knowledge.EditorID = $"{materialPartEditorID}Knowledge";
-                    knowledge.Name = $"{materialPartName} - Part Knowledge";
-                    knowledge.MenuDisplayObject = new FormLinkNullable<IStaticGetter>(bookStatic);
-                    knowledge.ObjectBounds = bookStatic.ObjectBounds.DeepCopy();
-                    knowledge.EquipmentType = new FormLinkNullable<IEquipTypeGetter>(
-                        Skyrim.EquipType.EitherHand.FormKey
-                    );
-                    knowledge.Type = SpellType.Ability;
-                    knowledge.CastType = CastType.ConstantEffect;
-                    knowledge.TargetType = TargetType.Self;
-
-                    // Create the knowledge "perk" mgef
-                    MagicEffect knowledgeMGEF = state.PatchMod.MagicEffects.AddNew();
-
-                    knowledgeMGEF.EditorID = $"{materialPartEditorID}KnowledgeMGEF";
-                    knowledgeMGEF.Name = $"{materialPartName} - Part Knowledge";
-                    knowledgeMGEF.MenuDisplayObject = new FormLinkNullable<IStaticGetter>(
-                        bookStatic
-                    );
-                    knowledgeMGEF.Flags.SetFlag(MagicEffect.Flag.NoMagnitude, true);
-                    knowledgeMGEF.CastType = CastType.ConstantEffect;
-                    knowledgeMGEF.TargetType = TargetType.Self;
-                    if (Settings.HideKnowledgeUI)
-                        knowledgeMGEF.Flags = MagicEffect.Flag.HideInUI;
-                    knowledgeMGEF.EquipAbility = new FormLinkNullable<ISpellGetter>(knowledge);
-                    ;
-
-                    knowledge.Effects.Add(
-                        new Effect()
+                    Spell knowledge =
+                        new(state.PatchMod)
                         {
-                            BaseEffect = new FormLinkNullable<IMagicEffectGetter>(knowledgeMGEF),
-                            Data = new() { Magnitude = 1f }
-                        }
-                    );
-
-                    // create a new book
-                    Book book = state.PatchMod.Books.AddNew();
-
-                    // Set the book properties
-                    book.EditorID = $"{materialPartEditorID}Schematic";
-                    book.Name = $"{materialPartName} - Part Schematic";
-                    book.Description =
-                        $"A schematic describing the process of crafting a {materialPartName}. I should read this to memorize it — or perhaps I can sell it instead...";
-                    book.Value = 10;
-                    book.Weight = 0.25f;
-                    book.Model = GenData.bookModelLib[bookModelSetKey];
-                    book.InventoryArt = new FormLinkNullable<IStaticGetter>(bookStatic);
-                    book.ObjectBounds = bookStatic.ObjectBounds.DeepCopy();
-                    book.Type = Book.BookType.BookOrTome;
-                    book.PickUpSound = new FormLinkNullable<ISoundDescriptorGetter>(
-                        Skyrim.SoundDescriptor.ITMNoteUp.FormKey
-                    );
-                    book.Keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>>
-                    {
-                        Skyrim.Keyword.VendorItemRecipe
-                    };
+                            EditorID = $"{materialPartEditorID}_Knowledge",
+                            Name = $"{materialPartName} - Part Knowledge",
+                            MenuDisplayObject = book.InventoryArt,
+                            ObjectBounds = book.ObjectBounds,
+                            EquipmentType = new FormLinkNullable<IEquipTypeGetter>(
+                                Skyrim.EquipType.EitherHand.FormKey
+                            ),
+                            Type = SpellType.Ability,
+                            CastType = CastType.ConstantEffect,
+                            TargetType = TargetType.Self,
+                        };
+                    state.PatchMod.Spells.Set(knowledge);
                     book.Teaches = new BookSpell() { Spell = knowledge.ToLink<ISpellGetter>() };
 
-                    // create a new book
-                    Book bookFragment = state.PatchMod.Books.AddNew();
+                    // Create the knowledge "perk" mgef
+                    MagicEffect knowledgeMGEF =
+                        new(state.PatchMod)
+                        {
+                            EditorID = $"{materialPartEditorID}_KnowledgeMGEF",
+                            Name = $"{materialPartName} - Part Knowledge",
+                            MenuDisplayObject = book.InventoryArt,
+                            Flags = MagicEffect.Flag.NoMagnitude,
+                            CastType = CastType.ConstantEffect,
+                            TargetType = TargetType.Self,
+                            EquipAbility = new FormLinkNullable<ISpellGetter>(knowledge),
+                        };
+                    if (Settings.HideKnowledgeUI)
+                        knowledgeMGEF.Flags |= MagicEffect.Flag.HideInUI;
+                    state.PatchMod.MagicEffects.Set(knowledgeMGEF);
 
-                    // Set the book properties
-                    bookFragment.EditorID = $"{book.EditorID}Fragment";
-                    bookFragment.Name = $"{materialPartName} - Part Notes";
-                    bookFragment.Description =
-                        $"My notes on the crafting process of a {materialPartName}.¨If I collect a few more I can perhaps combine them into a schematic...";
-                    bookFragment.Value = 2;
-                    bookFragment.Weight = 0.10f;
-                    bookFragment.Model = GenData.bookModelLib[bookModelSetKey];
-                    bookFragment.InventoryArt = new FormLinkNullable<IStaticGetter>(bookStatic);
-                    bookFragment.ObjectBounds = bookStatic.ObjectBounds.DeepCopy();
-                    bookFragment.Type = Book.BookType.BookOrTome;
-                    bookFragment.PickUpSound = new FormLinkNullable<ISoundDescriptorGetter>(
-                        Skyrim.SoundDescriptor.ITMNoteUp.FormKey
+                    knowledge.Effects.Add(
+                        new Effect() { BaseEffect = knowledgeMGEF.ToNullableLink(), }
                     );
-                    bookFragment.Keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>>
-                    {
-                        Skyrim.Keyword.VendorItemRecipe
-                    };
+
+                    // create a new book
+                    Book bookFragment =
+                        new(state.PatchMod)
+                        {
+                            EditorID = $"{book.EditorID}_Fragment",
+                            Name = $"{materialPartName} - Part Notes",
+                            Description =
+                                $"My notes on the crafting process of a {materialPartName}.¨If I collect a few more I can perhaps combine them into a schematic...",
+                            Value = 2,
+                            Weight = 0.10f
+                        };
+                    applyBookDefaults(materialPartName, bookFragment);
 
                     // Create COBJ fragment -> book
                     var noteToBookCOBJ = state.PatchMod.ConstructibleObjects.AddNew();
 
-                    noteToBookCOBJ.EditorID = $"{materialPartEditorID}Recipe";
-                    noteToBookCOBJ.CreatedObject = new FormLinkNullable<IConstructibleGetter>(
-                        book.FormKey
-                    );
-
-                    noteToBookCOBJ.Items = new ExtendedList<ContainerEntry>
-                    {
-                        new ContainerEntry()
-                        {
-                            Item = new ContainerItem()
-                            {
-                                Item = new FormLink<IItemGetter>(bookFragment.FormKey),
-                                Count = 4
-                            },
-                        }
-                    };
-                    noteToBookCOBJ.WorkbenchKeyword = new FormLinkNullable<IKeywordGetter>(
-                        partListUniques[partName].Bench.FormKey
-                    );
-                    noteToBookCOBJ.CreatedObjectCount = 1;
-
-                    // Add conditions (so it doesn't clutter the menu)
-                    var noteToBookCOBJCond = new GetItemCountConditionData()
-                    {
-                        RunOnType = Condition.RunOnType.Reference,
-                        Reference = Skyrim.PlayerRef,
-                    };
-                    ;
-                    noteToBookCOBJCond.ItemOrList = new FormLinkOrIndex<IItemOrListGetter>(
-                        noteToBookCOBJCond,
-                        bookFragment.FormKey
-                    );
-
-                    noteToBookCOBJCond.ItemOrList.Link.SetTo(bookFragment);
-
-                    noteToBookCOBJ.Conditions.Add(
-                        new ConditionFloat()
-                        {
-                            ComparisonValue = 1,
-                            CompareOperator = CompareOperator.GreaterThanOrEqualTo,
-                            Data = noteToBookCOBJCond
-                        }
+                    createTranslationCOBJ(
+                        noteToBookCOBJ,
+                        bookFragment.ToLink(),
+                        book.ToLink(),
+                        new FormLinkNullable<IKeywordGetter>(
+                            benchKeywordSwap[partListUniques[partName].Bench.FormKey]["study"]
+                        ),
+                        knowledge.ToLink(),
+                        4
                     );
 
                     // Create COBJ mats -> fragment
                     var matToNoteCOBJ = state.PatchMod.ConstructibleObjects.AddNew();
 
-                    matToNoteCOBJ.EditorID = $"{materialPartEditorID}RecipeFragment";
-                    matToNoteCOBJ.CreatedObject = new FormLinkNullable<IConstructibleGetter>(
-                        bookFragment.FormKey
+                    createTranslationCOBJ(
+                        matToNoteCOBJ,
+                        material.Value.Ingot,
+                        bookFragment.ToLink(),
+                        new FormLinkNullable<IKeywordGetter>(
+                            benchKeywordSwap[partListUniques[partName].Bench.FormKey]["study"]
+                        ),
+                        knowledge.ToLink(),
+                        3 * partListUniques[partName].Size
                     );
-
-                    matToNoteCOBJ.Items = new ExtendedList<ContainerEntry>
-                    {
-                        new ContainerEntry()
-                        {
-                            Item = new ContainerItem()
-                            {
-                                Item = new FormLink<IItemGetter>(material.Ingot.FormKey),
-                                Count = 3 * partListUniques[partName].Size
-                            },
-                        }
-                    };
-                    matToNoteCOBJ.WorkbenchKeyword = new FormLinkNullable<IKeywordGetter>(
-                        partListUniques[partName].Bench.FormKey
-                    );
-                    matToNoteCOBJ.CreatedObjectCount = 1;
-
-                    // Add conditions (so it doesn't clutter the menu)
-                    var matToNoteCOBJCond = new GetItemCountConditionData()
-                    {
-                        RunOnType = Condition.RunOnType.Reference,
-                        Reference = Skyrim.PlayerRef,
-                    };
-                    ;
-                    matToNoteCOBJCond.ItemOrList = new FormLinkOrIndex<IItemOrListGetter>(
-                        matToNoteCOBJCond,
-                        material.Ingot.FormKey
-                    );
-                    matToNoteCOBJCond.ItemOrList.Link.SetTo(material.Ingot.FormKey);
-
-                    matToNoteCOBJ.Conditions.Add(
-                        new ConditionFloat()
-                        {
-                            ComparisonValue = 1,
-                            CompareOperator = CompareOperator.GreaterThanOrEqualTo,
-                            Data = matToNoteCOBJCond
-                        }
-                    );
-
-                    // Add conditions (so it doesn't clutter the menu)
-                    if (Settings.HideOnceUnlocked)
-                    {
-                        var knowledgeCondData = new HasSpellConditionData()
-                        {
-                            RunOnType = Condition.RunOnType.Reference,
-                            Reference = Skyrim.PlayerRef,
-                        };
-
-                        knowledgeCondData.Spell = new FormLinkOrIndex<ISpellGetter>(
-                            knowledgeCondData,
-                            knowledge.FormKey
-                        );
-                        knowledgeCondData.Spell.Link.SetTo(knowledge);
-
-                        var knowledgeCond = new ConditionFloat()
-                        {
-                            ComparisonValue = 0,
-                            CompareOperator = CompareOperator.EqualTo,
-                            Data = knowledgeCondData
-                        };
-
-                        matToNoteCOBJ.Conditions.Add(knowledgeCond);
-                        noteToBookCOBJ.Conditions.Add(knowledgeCond);
-                    }
 
                     // Do not show cobjs if lacking skill
-                    if (material.PerkReq != FormLinkGetter<IPerkGetter>.Null)
+                    if (material.Value.PerkReq != FormLinkGetter<IPerkGetter>.Null)
                     {
                         // Add conditions (so it doesn't clutter the menu)
                         var perkReqCond = new HasPerkConditionData()
@@ -506,10 +500,10 @@ namespace Hephaestus
                         ;
                         perkReqCond.Perk = new FormLinkOrIndex<IPerkGetter>(
                             perkReqCond,
-                            material.PerkReq.FormKey
+                            material.Value.PerkReq.FormKey
                         );
 
-                        perkReqCond.Perk.Link.SetTo(material.PerkReq);
+                        perkReqCond.Perk.Link.SetTo(material.Value.PerkReq);
 
                         noteToBookCOBJ.Conditions.Add(
                             new ConditionFloat()
@@ -531,7 +525,7 @@ namespace Hephaestus
                     }
 
                     // Add knowledge spell to part dict then add knowledge and book to separate dict
-                    partDict[material.Name].Add(partName, knowledge.FormKey);
+                    partDict[material.Key].Add(partName, knowledge.FormKey);
                     bookKnowledge.Add(
                         knowledge.FormKey,
                         new()
@@ -568,7 +562,7 @@ namespace Hephaestus
                 if (
                     baseCOBJ.Items == null
                     || !Settings.BenchSettings.Any(e =>
-                        e.BenchKeyword.FormKey == baseCOBJ.WorkbenchKeyword.FormKey
+                        e.Key.FormKey == baseCOBJ.WorkbenchKeyword.FormKey
                     )
                     || !baseCOBJ.CreatedObject.TryResolve(state.LinkCache, out var createdItem)
                     || noValidMats.Contains(createdItem.FormKey)
@@ -595,12 +589,14 @@ namespace Hephaestus
                             continue;
 
                         if (
-                            createdItemKeywords.Keywords.Any(e => material.Keywords.Contains(e))
+                            createdItemKeywords.Keywords.Any(e =>
+                                material.Value.Keywords.Contains(e)
+                            )
                             // Jewelry specific check
                             || (
                                 createdItemKeywords.Keywords.Contains(Skyrim.Keyword.ArmorJewelry)
                                 && baseCOBJ.Items.Any(e =>
-                                    e.Item.Item.FormKey == material.Ingot.FormKey
+                                    e.Item.Item.FormKey == material.Value.Ingot.FormKey
                                 )
                             )
                         )
@@ -609,11 +605,11 @@ namespace Hephaestus
                             {
                                 itemMaterials.Add(createdItem.FormKey, new());
                             }
-                            itemMaterials[createdItem.FormKey].Add(material.Name);
+                            itemMaterials[createdItem.FormKey].Add(material.Key);
 
                             if (Settings.ShowDebugLogs)
                             {
-                                Console.WriteLine($"Found {material.Name}");
+                                Console.WriteLine($"Found {material.Key}");
                             }
                         }
                     }
@@ -842,7 +838,7 @@ namespace Hephaestus
                         }
                     };
                     noteToBookCOBJ.WorkbenchKeyword = new FormLinkNullable<IKeywordGetter>(
-                        itemBench[createdItemFormKey]
+                        benchKeywordSwap[itemBench[createdItemFormKey]]["study"]
                     );
                     noteToBookCOBJ.CreatedObjectCount = 1;
 
@@ -887,8 +883,7 @@ namespace Hephaestus
                     };
 
                     itemToBookCOBJ.WorkbenchKeyword = new FormLinkNullable<IKeywordGetter>(
-                        // itemBench[createdItemFormKey]
-                        dummyForgeKeyword.FormKey
+                        benchKeywordSwap[itemBench[createdItemFormKey]]["break"]
                     );
                     itemToBookCOBJ.CreatedObjectCount = 1;
 
@@ -925,22 +920,20 @@ namespace Hephaestus
                     matToNoteCOBJ.Items = new ExtendedList<ContainerEntry>();
 
                     matToNoteCOBJ.WorkbenchKeyword = new FormLinkNullable<IKeywordGetter>(
-                        itemBench[createdItemFormKey]
+                        benchKeywordSwap[itemBench[createdItemFormKey]]["break"]
                     );
                     matToNoteCOBJ.CreatedObjectCount = (ushort?)matToNoteCOBJ.Items.Count;
 
                     foreach (var materialName in itemMaterials[createdItemFormKey])
                     {
-                        var material = Settings.MaterialWhitelist.First(e =>
-                            e.Name == materialName
-                        );
+                        var material = Settings.MaterialWhitelist.First(e => e.Key == materialName);
 
                         matToNoteCOBJ.Items.Add(
                             new()
                             {
                                 Item = new()
                                 {
-                                    Item = new FormLink<IItemGetter>(material.Ingot.FormKey),
+                                    Item = new FormLink<IItemGetter>(material.Value.Ingot.FormKey),
                                     Count = 1
                                 }
                             }
@@ -955,9 +948,9 @@ namespace Hephaestus
                         ;
                         matToNoteCOBJCond.ItemOrList = new FormLinkOrIndex<IItemOrListGetter>(
                             matToNoteCOBJCond,
-                            material.Ingot.FormKey
+                            material.Value.Ingot.FormKey
                         );
-                        matToNoteCOBJCond.ItemOrList.Link.SetTo(material.Ingot.FormKey);
+                        matToNoteCOBJCond.ItemOrList.Link.SetTo(material.Value.Ingot.FormKey);
 
                         matToNoteCOBJ.Conditions.Add(
                             new ConditionFloat()
@@ -1087,7 +1080,7 @@ namespace Hephaestus
                                     };
                                     itemToBookCOBJ.WorkbenchKeyword =
                                         new FormLinkNullable<IKeywordGetter>(
-                                            itemBench[createdItemFormKey]
+                                            benchKeywordSwap[itemBench[createdItemFormKey]]["break"]
                                         );
                                     itemToBookCOBJ.CreatedObjectCount = 1;
 
@@ -1321,7 +1314,7 @@ namespace Hephaestus
             {
                 foreach (string partName in partListUniques.Keys)
                 {
-                    var knowledge = partDict[material.Name][partName];
+                    var knowledge = partDict[material.Key][partName];
                     if (!state.LinkCache.TryResolve<ISpellGetter>(knowledge, out var knowledgeRef))
                         continue;
 
@@ -1335,7 +1328,7 @@ namespace Hephaestus
                             knowledgeRef.Effects[0].BaseEffect.FormKey
                         );
                         state.PatchMod.Spells.Remove(knowledge);
-                        Console.WriteLine($"Removed {material.Name} {partName}");
+                        Console.WriteLine($"Removed {material.Key} {partName}");
                     }
                 }
             }

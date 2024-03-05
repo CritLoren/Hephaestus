@@ -7,27 +7,27 @@ namespace Hephaestus
 {
     public class BaseSettings
     {
-        [SynthesisSettingName("The keyword your crafting furniture uses")]
-        public IFormLinkGetter<IKeywordGetter> BenchKeyword { get; set; } =
-            FormLinkGetter<IKeywordGetter>.Null;
-
         [SynthesisSettingName("The name of the crafting furniture")]
-        public string ObjBenchName { get; set; } = string.Empty;
+        public string BenchName { get; set; } = string.Empty;
+
+        [SynthesisSettingName("Is this a workbench that sharpens/tempers items?")]
+        public bool doesTemperOnly { get; set; } = false;
 
         [SynthesisSettingName("The name of the process")]
         public string ProcessName { get; set; } = string.Empty;
 
         [SynthesisSettingName("The name of the schematic item")]
         public string SchematicTypeName { get; set; } = string.Empty;
+
+        [SynthesisSettingName("Menu item")]
+        public IFormLinkGetter<IStaticGetter> BenchMenuStatic { get; set; } =
+            Skyrim.Static.BlacksmithAnvilStatic;
     }
 
     public class MaterialWhitelist
     {
-        [SynthesisSettingName("The name of the material")]
-        public string Name { get; set; } = string.Empty;
-
         [SynthesisSettingName("The material ingot")]
-        public IFormLinkGetter<IItemGetter> Ingot { get; set; } = FormLinkGetter<IItemGetter>.Null;
+        public IFormLink<IItemGetter> Ingot { get; set; } = Skyrim.MiscItem.Leather01;
 
         [SynthesisSettingName("The perk required to craft")]
         public IFormLinkGetter<IPerkGetter> PerkReq { get; set; } =
@@ -72,6 +72,9 @@ namespace Hephaestus
         // [SynthesisDescription("Makes it so you need the schematic to temper items too")]
         // [SynthesisTooltip("Makes it so you need the schematic to temper items too")]
         // public bool TemperReqSchematic { get; set; } = true;
+
+        [SynthesisSettingName("Give smithing exp")]
+        public bool giveSmithingExp { get; set; } = false;
 
         [SynthesisSettingName("Hide schematics, fragments, etc. once learned")]
         [SynthesisDescription(
@@ -132,335 +135,416 @@ namespace Hephaestus
         public bool HideKnowledgeUI { get; set; } = false;
 
         [SynthesisSettingName("Crafting furniture settings")]
-        public List<BaseSettings> BenchSettings { get; set; } =
+        public Dictionary<FormLink<IKeywordGetter>, BaseSettings> BenchSettings { get; set; } =
             new()
             {
-                new BaseSettings()
                 {
-                    BenchKeyword = Skyrim.Keyword.CraftingSmithingForge,
-                    ObjBenchName = "Forge",
-                    ProcessName = "shape",
-                    SchematicTypeName = "Schematic"
+                    Skyrim.Keyword.CraftingSmithingForge,
+                    new BaseSettings()
+                    {
+                        BenchName = "Forge",
+                        ProcessName = "shape",
+                        SchematicTypeName = "Schematic"
+                    }
                 },
-                new BaseSettings()
                 {
-                    BenchKeyword = Skyrim.Keyword.CraftingSmithingSharpeningWheel,
-                    ObjBenchName = "Sharpening Wheel",
-                    ProcessName = "sharpen",
-                    SchematicTypeName = "Schematic"
+                    Skyrim.Keyword.CraftingSmithingSharpeningWheel,
+                    new BaseSettings()
+                    {
+                        BenchName = "Sharpening Wheel",
+                        ProcessName = "sharpen",
+                        SchematicTypeName = "Schematic",
+                        doesTemperOnly = true,
+                    }
                 },
-                new BaseSettings()
                 {
-                    BenchKeyword = Skyrim.Keyword.CraftingSmithingArmorTable,
-                    ObjBenchName = "Armor Table",
-                    ProcessName = "temper",
-                    SchematicTypeName = "Schematic"
+                    Skyrim.Keyword.CraftingSmithingArmorTable,
+                    new BaseSettings()
+                    {
+                        BenchName = "Armor Table",
+                        ProcessName = "temper",
+                        SchematicTypeName = "Schematic",
+                        doesTemperOnly = true,
+                    }
                 },
-                new BaseSettings()
                 {
-                    BenchKeyword = Skyrim.Keyword.CraftingTanningRack,
-                    ObjBenchName = "Tanning Rack",
-                    ProcessName = "stitch",
-                    SchematicTypeName = "Pattern"
+                    Skyrim.Keyword.CraftingTanningRack,
+                    new BaseSettings()
+                    {
+                        BenchName = "Tanning Rack",
+                        ProcessName = "stitch",
+                        SchematicTypeName = "Pattern"
+                    }
                 },
-                new BaseSettings()
                 {
-                    BenchKeyword = Skyrim.Keyword.CraftingCookpot,
-                    ObjBenchName = "Cooking Pot",
-                    ProcessName = "cook",
-                    SchematicTypeName = "Recipe"
+                    Skyrim.Keyword.CraftingCookpot,
+                    new BaseSettings()
+                    {
+                        BenchName = "Cooking Pot",
+                        ProcessName = "cook",
+                        SchematicTypeName = "Recipe"
+                    }
                 }
             };
 
         [SynthesisSettingName("Material Whitelist")]
-        public List<MaterialWhitelist> MaterialWhitelist { get; set; } =
+        public Dictionary<string, MaterialWhitelist> MaterialWhitelist { get; set; } =
             new()
             {
-                new()
                 {
-                    Name = "Wood",
-                    Ingot = Skyrim.MiscItem.Firewood01,
-                    Keywords = new() { Skyrim.Keyword.WeapMaterialWood }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Cloth",
-                    Ingot = Skyrim.MiscItem.Leather01,
-                    Keywords = new() { Skyrim.Keyword.ArmorClothing }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Hide",
-                    Ingot = Skyrim.MiscItem.Leather01,
-                    Keywords = new() { Skyrim.Keyword.ArmorMaterialHide, }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Leather",
-                    Ingot = Skyrim.MiscItem.Leather01,
-                    Keywords = new()
+                    "Wood",
+                    new()
                     {
-                        Skyrim.Keyword.ArmorMaterialLeather,
-                        Skyrim.Keyword.ArmorDarkBrotherhood,
-                        Skyrim.Keyword.ArmorNightingale,
-                        Dawnguard.Keyword.DLC1ArmorMaterialVampire
+                        Ingot = Skyrim.MiscItem.Firewood01,
+                        Keywords = new() { Skyrim.Keyword.WeapMaterialWood }
                     }
                 },
-                new MaterialWhitelist()
                 {
-                    Name = "Iron",
-                    Ingot = Skyrim.MiscItem.IngotIron,
-                    Keywords = new()
+                    "Cloth",
+                    new()
                     {
-                        Skyrim.Keyword.WeapMaterialIron,
-                        Skyrim.Keyword.ArmorMaterialIron
+                        Ingot = Skyrim.MiscItem.Leather01,
+                        Keywords = new() { Skyrim.Keyword.ArmorClothing }
                     }
                 },
-                new MaterialWhitelist()
                 {
-                    Name = "Iron Banded",
-                    Ingot = Skyrim.MiscItem.IngotCorundum,
-                    Keywords = new() { Skyrim.Keyword.ArmorMaterialIronBanded, }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Studded",
-                    Ingot = Skyrim.MiscItem.IngotIron,
-                    Keywords = new() { Skyrim.Keyword.ArmorMaterialStudded, }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Scaled",
-                    Ingot = Skyrim.MiscItem.IngotCorundum,
-                    PerkReq = Skyrim.Perk.AdvancedArmors,
-                    Keywords = new() { Skyrim.Keyword.ArmorMaterialScaled, }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Draugr",
-                    Ingot = Skyrim.MiscItem.IngotIron,
-                    Keywords = new() { Skyrim.Keyword.WeapMaterialDraugr }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Honed Draugr",
-                    Ingot = Skyrim.MiscItem.IngotIron,
-                    Keywords = new() { Skyrim.Keyword.WeapMaterialDraugrHoned }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Imperial",
-                    Ingot = Skyrim.MiscItem.IngotSteel,
-                    PerkReq = Skyrim.Perk.SteelSmithing,
-                    Keywords = new()
+                    "Hide",
+                    new()
                     {
-                        Skyrim.Keyword.WeapMaterialImperial,
-                        Skyrim.Keyword.ArmorMaterialImperialLight,
+                        Ingot = Skyrim.MiscItem.Leather01,
+                        Keywords = new() { Skyrim.Keyword.ArmorMaterialHide, }
                     }
                 },
-                new MaterialWhitelist()
                 {
-                    Name = "Imperial Studded",
-                    Ingot = Skyrim.MiscItem.IngotSteel,
-                    PerkReq = Skyrim.Perk.SteelSmithing,
-                    Keywords = new() { Skyrim.Keyword.ArmorMaterialImperialStudded, }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Heavy Imperial",
-                    Ingot = Skyrim.MiscItem.IngotSteel,
-                    PerkReq = Skyrim.Perk.SteelSmithing,
-                    Keywords = new() { Skyrim.Keyword.ArmorMaterialImperialHeavy, }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Steel",
-                    Ingot = Skyrim.MiscItem.IngotSteel,
-                    PerkReq = Skyrim.Perk.SteelSmithing,
-                    Keywords = new()
+                    "Leather",
+                    new()
                     {
-                        Skyrim.Keyword.WeapMaterialSteel,
-                        Skyrim.Keyword.ArmorMaterialSteel,
-                        Update.Keyword.ArmorMaterialBlades,
-                        Dawnguard.Keyword.DLC1ArmorMaterialDawnguard
+                        Ingot = Skyrim.MiscItem.Leather01,
+                        Keywords = new()
+                        {
+                            Skyrim.Keyword.ArmorMaterialLeather,
+                            Skyrim.Keyword.ArmorDarkBrotherhood,
+                            Skyrim.Keyword.ArmorNightingale,
+                            Dawnguard.Keyword.DLC1ArmorMaterialVampire
+                        }
                     }
                 },
-                new MaterialWhitelist()
                 {
-                    Name = "Steel Plate",
-                    Ingot = Skyrim.MiscItem.IngotCorundum,
-                    PerkReq = Skyrim.Perk.SteelSmithing,
-                    Keywords = new() { Skyrim.Keyword.ArmorMaterialSteelPlate, }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Orcish",
-                    Ingot = Skyrim.MiscItem.IngotOrichalcum,
-                    PerkReq = Skyrim.Perk.OrcishSmithing,
-                    Keywords = new()
+                    "Iron",
+                    new()
                     {
-                        Skyrim.Keyword.WeapMaterialOrcish,
-                        Skyrim.Keyword.ArmorMaterialOrcish,
+                        Ingot = Skyrim.MiscItem.IngotIron,
+                        Keywords = new()
+                        {
+                            Skyrim.Keyword.WeapMaterialIron,
+                            Skyrim.Keyword.ArmorMaterialIron
+                        }
                     }
                 },
-                new MaterialWhitelist()
                 {
-                    Name = "Dwemer",
-                    Ingot = Skyrim.MiscItem.IngotDwarven,
-                    PerkReq = Skyrim.Perk.OrcishSmithing,
-                    Keywords = new()
+                    "Iron Banded",
+                    new()
                     {
-                        Skyrim.Keyword.WeapMaterialDwarven,
-                        Skyrim.Keyword.ArmorMaterialDwarven,
+                        Ingot = Skyrim.MiscItem.IngotCorundum,
+                        Keywords = new() { Skyrim.Keyword.ArmorMaterialIronBanded, }
                     }
                 },
-                new MaterialWhitelist()
                 {
-                    Name = "Elven",
-                    Ingot = Skyrim.MiscItem.IngotQuicksilver,
-                    PerkReq = Skyrim.Perk.ElvenSmithing,
-                    Keywords = new()
+                    "Studded",
+                    new()
                     {
-                        Skyrim.Keyword.WeapMaterialElven,
-                        Skyrim.Keyword.ArmorMaterialElven,
+                        Ingot = Skyrim.MiscItem.IngotIron,
+                        Keywords = new() { Skyrim.Keyword.ArmorMaterialStudded, }
                     }
                 },
-                new MaterialWhitelist()
                 {
-                    Name = "Elven Gilded",
-                    Ingot = Skyrim.MiscItem.IngotQuicksilver,
-                    PerkReq = Skyrim.Perk.ElvenSmithing,
-                    Keywords = new() { Skyrim.Keyword.ArmorMaterialElvenGilded }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Falmer",
-                    Ingot = Skyrim.MiscItem.ChaurusChitin,
-                    Keywords = new()
+                    "Scaled",
+                    new()
                     {
-                        Skyrim.Keyword.WeapMaterialFalmer,
-                        Update.Keyword.ArmorMaterialFalmer,
-                        Dawnguard.Keyword.DLC1ArmorMaterielFalmerHeavy,
-                        Dawnguard.Keyword.DLC1ArmorMaterielFalmerHeavyOriginal
+                        Ingot = Skyrim.MiscItem.IngotCorundum,
+                        PerkReq = Skyrim.Perk.AdvancedArmors,
+                        Keywords = new() { Skyrim.Keyword.ArmorMaterialScaled, }
                     }
                 },
-                new MaterialWhitelist()
                 {
-                    Name = "Falmer Hardened",
-                    Ingot = Skyrim.MiscItem.ChaurusChitin,
-                    Keywords = new() { Dawnguard.Keyword.DLC1ArmorMaterialFalmerHardened }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Honed Falmer",
-                    Ingot = Skyrim.MiscItem.ChaurusChitin,
-                    Keywords = new() { Skyrim.Keyword.WeapMaterialFalmerHoned, }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Glass",
-                    Ingot = Skyrim.MiscItem.IngotMalachite,
-                    PerkReq = Skyrim.Perk.GlassSmithing,
-                    Keywords = new()
+                    "Draugr",
+                    new()
                     {
-                        Skyrim.Keyword.WeapMaterialGlass,
-                        Skyrim.Keyword.ArmorMaterialGlass,
+                        Ingot = Skyrim.MiscItem.IngotIron,
+                        Keywords = new() { Skyrim.Keyword.WeapMaterialDraugr }
                     }
                 },
-                new MaterialWhitelist()
                 {
-                    Name = "Ebony",
-                    Ingot = Skyrim.MiscItem.IngotEbony,
-                    PerkReq = Skyrim.Perk.EbonySmithing,
-                    Keywords = new()
+                    "Honed Draugr",
+                    new()
                     {
-                        Skyrim.Keyword.WeapMaterialEbony,
-                        Skyrim.Keyword.ArmorMaterialEbony
+                        Ingot = Skyrim.MiscItem.IngotIron,
+                        Keywords = new() { Skyrim.Keyword.WeapMaterialDraugrHoned }
                     }
                 },
-                new MaterialWhitelist()
                 {
-                    Name = "Daedric",
-                    Ingot = Skyrim.Ingredient.DaedraHeart,
-                    PerkReq = Skyrim.Perk.DaedricSmithing,
-                    Keywords = new()
+                    "Imperial",
+                    new()
                     {
-                        Skyrim.Keyword.WeapMaterialDaedric,
-                        Skyrim.Keyword.ArmorMaterialDaedric
+                        Ingot = Skyrim.MiscItem.IngotSteel,
+                        PerkReq = Skyrim.Perk.SteelSmithing,
+                        Keywords = new()
+                        {
+                            Skyrim.Keyword.WeapMaterialImperial,
+                            Skyrim.Keyword.ArmorMaterialImperialLight,
+                        }
                     }
                 },
-                new MaterialWhitelist()
                 {
-                    Name = "Dragonscale",
-                    Ingot = Skyrim.MiscItem.DragonScales,
-                    PerkReq = Skyrim.Perk.DragonArmor,
-                    Keywords = new() { Skyrim.Keyword.ArmorMaterialDragonscale },
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Dragonplate",
-                    Ingot = Skyrim.MiscItem.DragonBone,
-                    PerkReq = Skyrim.Perk.DragonArmor,
-                    Keywords = new() { Skyrim.Keyword.ArmorMaterialDragonplate }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Dragonbone",
-                    Ingot = Skyrim.MiscItem.DragonBone,
-                    PerkReq = Skyrim.Perk.DragonArmor,
-                    Keywords = new() { Dawnguard.Keyword.DLC1WeapMaterialDragonbone }
-                },
-                new MaterialWhitelist()
-                {
-                    Name = "Stalhrim",
-                    Ingot = Dragonborn.MiscItem.DLC2OreStalhrim,
-                    Keywords = new()
+                    "Imperial Studded",
+                    new()
                     {
-                        Dragonborn.Keyword.DLC2WeaponMaterialStalhrim,
-                        Dragonborn.Keyword.DLC2ArmorMaterialStalhrimLight,
-                        Dragonborn.Keyword.DLC2ArmorMaterialStalhrimHeavy
+                        Ingot = Skyrim.MiscItem.IngotSteel,
+                        PerkReq = Skyrim.Perk.SteelSmithing,
+                        Keywords = new() { Skyrim.Keyword.ArmorMaterialImperialStudded, }
                     }
                 },
-                new MaterialWhitelist()
                 {
-                    Name = "Nordic",
-                    Ingot = Skyrim.MiscItem.IngotQuicksilver,
-                    PerkReq = Skyrim.Perk.AdvancedArmors,
-                    Keywords = new()
+                    "Heavy Imperial",
+                    new()
                     {
-                        Dragonborn.Keyword.DLC2WeaponMaterialNordic,
-                        Dragonborn.Keyword.DLC2ArmorMaterialNordicLight,
-                        Dragonborn.Keyword.DLC2ArmorMaterialNordicHeavy,
+                        Ingot = Skyrim.MiscItem.IngotSteel,
+                        PerkReq = Skyrim.Perk.SteelSmithing,
+                        Keywords = new() { Skyrim.Keyword.ArmorMaterialImperialHeavy, }
                     }
                 },
-                new MaterialWhitelist()
                 {
-                    Name = "Chitin",
-                    Ingot = Dragonborn.MiscItem.DLC2ChitinPlate,
-                    PerkReq = Skyrim.Perk.ElvenSmithing,
-                    Keywords = new()
+                    "Steel",
+                    new()
                     {
-                        Dragonborn.Keyword.DLC2ArmorMaterialChitinLight,
-                        Dragonborn.Keyword.DLC2ArmorMaterialChitinHeavy
+                        Ingot = Skyrim.MiscItem.IngotSteel,
+                        PerkReq = Skyrim.Perk.SteelSmithing,
+                        Keywords = new()
+                        {
+                            Skyrim.Keyword.WeapMaterialSteel,
+                            Skyrim.Keyword.ArmorMaterialSteel,
+                            Update.Keyword.ArmorMaterialBlades,
+                            Dawnguard.Keyword.DLC1ArmorMaterialDawnguard
+                        }
                     }
                 },
-                new MaterialWhitelist()
                 {
-                    Name = "Bonemold",
-                    Ingot = Skyrim.Ingredient.BoneMeal,
-                    PerkReq = Skyrim.Perk.SteelSmithing,
-                    Keywords = new()
+                    "Steel Plate",
+                    new()
                     {
-                        Dragonborn.Keyword.DLC2ArmorMaterialBonemoldLight,
-                        Dragonborn.Keyword.DLC2ArmorMaterialBonemoldHeavy,
+                        Ingot = Skyrim.MiscItem.IngotCorundum,
+                        PerkReq = Skyrim.Perk.SteelSmithing,
+                        Keywords = new() { Skyrim.Keyword.ArmorMaterialSteelPlate, }
                     }
                 },
-                new MaterialWhitelist() { Name = "Gold", Ingot = Skyrim.MiscItem.IngotGold, },
-                new MaterialWhitelist()
                 {
-                    Name = "Silver",
-                    Ingot = Skyrim.MiscItem.ingotSilver,
-                    Keywords = new() { Skyrim.Keyword.WeapMaterialSilver }
+                    "Orcish",
+                    new()
+                    {
+                        Ingot = Skyrim.MiscItem.IngotOrichalcum,
+                        PerkReq = Skyrim.Perk.OrcishSmithing,
+                        Keywords = new()
+                        {
+                            Skyrim.Keyword.WeapMaterialOrcish,
+                            Skyrim.Keyword.ArmorMaterialOrcish,
+                        }
+                    }
+                },
+                {
+                    "Dwemer",
+                    new()
+                    {
+                        Ingot = Skyrim.MiscItem.IngotDwarven,
+                        PerkReq = Skyrim.Perk.OrcishSmithing,
+                        Keywords = new()
+                        {
+                            Skyrim.Keyword.WeapMaterialDwarven,
+                            Skyrim.Keyword.ArmorMaterialDwarven,
+                        }
+                    }
+                },
+                {
+                    "Elven",
+                    new()
+                    {
+                        Ingot = Skyrim.MiscItem.IngotQuicksilver,
+                        PerkReq = Skyrim.Perk.ElvenSmithing,
+                        Keywords = new()
+                        {
+                            Skyrim.Keyword.WeapMaterialElven,
+                            Skyrim.Keyword.ArmorMaterialElven,
+                        }
+                    }
+                },
+                {
+                    "Elven Gilded",
+                    new()
+                    {
+                        Ingot = Skyrim.MiscItem.IngotQuicksilver,
+                        PerkReq = Skyrim.Perk.ElvenSmithing,
+                        Keywords = new() { Skyrim.Keyword.ArmorMaterialElvenGilded }
+                    }
+                },
+                {
+                    "Falmer",
+                    new()
+                    {
+                        Ingot = Skyrim.MiscItem.ChaurusChitin,
+                        Keywords = new()
+                        {
+                            Skyrim.Keyword.WeapMaterialFalmer,
+                            Update.Keyword.ArmorMaterialFalmer,
+                            Dawnguard.Keyword.DLC1ArmorMaterielFalmerHeavy,
+                            Dawnguard.Keyword.DLC1ArmorMaterielFalmerHeavyOriginal
+                        }
+                    }
+                },
+                {
+                    "Falmer Hardened",
+                    new()
+                    {
+                        Ingot = Skyrim.MiscItem.ChaurusChitin,
+                        Keywords = new() { Dawnguard.Keyword.DLC1ArmorMaterialFalmerHardened }
+                    }
+                },
+                {
+                    "Honed Falmer",
+                    new()
+                    {
+                        Ingot = Skyrim.MiscItem.ChaurusChitin,
+                        Keywords = new() { Skyrim.Keyword.WeapMaterialFalmerHoned, }
+                    }
+                },
+                {
+                    "Glass",
+                    new()
+                    {
+                        Ingot = Skyrim.MiscItem.IngotMalachite,
+                        PerkReq = Skyrim.Perk.GlassSmithing,
+                        Keywords = new()
+                        {
+                            Skyrim.Keyword.WeapMaterialGlass,
+                            Skyrim.Keyword.ArmorMaterialGlass,
+                        }
+                    }
+                },
+                {
+                    "Ebony",
+                    new()
+                    {
+                        Ingot = Skyrim.MiscItem.IngotEbony,
+                        PerkReq = Skyrim.Perk.EbonySmithing,
+                        Keywords = new()
+                        {
+                            Skyrim.Keyword.WeapMaterialEbony,
+                            Skyrim.Keyword.ArmorMaterialEbony
+                        }
+                    }
+                },
+                {
+                    "Daedric",
+                    new()
+                    {
+                        Ingot = Skyrim.Ingredient.DaedraHeart,
+                        PerkReq = Skyrim.Perk.DaedricSmithing,
+                        Keywords = new()
+                        {
+                            Skyrim.Keyword.WeapMaterialDaedric,
+                            Skyrim.Keyword.ArmorMaterialDaedric
+                        }
+                    }
+                },
+                {
+                    "Dragonscale",
+                    new()
+                    {
+                        Ingot = Skyrim.MiscItem.DragonScales,
+                        PerkReq = Skyrim.Perk.DragonArmor,
+                        Keywords = new() { Skyrim.Keyword.ArmorMaterialDragonscale },
+                    }
+                },
+                {
+                    "Dragonplate",
+                    new()
+                    {
+                        Ingot = Skyrim.MiscItem.DragonBone,
+                        PerkReq = Skyrim.Perk.DragonArmor,
+                        Keywords = new() { Skyrim.Keyword.ArmorMaterialDragonplate }
+                    }
+                },
+                {
+                    "Dragonbone",
+                    new()
+                    {
+                        Ingot = Skyrim.MiscItem.DragonBone,
+                        PerkReq = Skyrim.Perk.DragonArmor,
+                        Keywords = new() { Dawnguard.Keyword.DLC1WeapMaterialDragonbone }
+                    }
+                },
+                {
+                    "Stalhrim",
+                    new()
+                    {
+                        Ingot = Dragonborn.MiscItem.DLC2OreStalhrim,
+                        Keywords = new()
+                        {
+                            Dragonborn.Keyword.DLC2WeaponMaterialStalhrim,
+                            Dragonborn.Keyword.DLC2ArmorMaterialStalhrimLight,
+                            Dragonborn.Keyword.DLC2ArmorMaterialStalhrimHeavy
+                        }
+                    }
+                },
+                {
+                    "Nordic",
+                    new()
+                    {
+                        Ingot = Skyrim.MiscItem.IngotQuicksilver,
+                        PerkReq = Skyrim.Perk.AdvancedArmors,
+                        Keywords = new()
+                        {
+                            Dragonborn.Keyword.DLC2WeaponMaterialNordic,
+                            Dragonborn.Keyword.DLC2ArmorMaterialNordicLight,
+                            Dragonborn.Keyword.DLC2ArmorMaterialNordicHeavy,
+                        }
+                    }
+                },
+                {
+                    "Chitin",
+                    new()
+                    {
+                        Ingot = Dragonborn.MiscItem.DLC2ChitinPlate,
+                        PerkReq = Skyrim.Perk.ElvenSmithing,
+                        Keywords = new()
+                        {
+                            Dragonborn.Keyword.DLC2ArmorMaterialChitinLight,
+                            Dragonborn.Keyword.DLC2ArmorMaterialChitinHeavy
+                        }
+                    }
+                },
+                {
+                    "Bonemold",
+                    new()
+                    {
+                        Ingot = Skyrim.Ingredient.BoneMeal,
+                        PerkReq = Skyrim.Perk.SteelSmithing,
+                        Keywords = new()
+                        {
+                            Dragonborn.Keyword.DLC2ArmorMaterialBonemoldLight,
+                            Dragonborn.Keyword.DLC2ArmorMaterialBonemoldHeavy,
+                        }
+                    }
+                },
+                {
+                    "Gold",
+                    new() { Ingot = Skyrim.MiscItem.IngotGold, }
+                },
+                {
+                    "Silver",
+                    new()
+                    {
+                        Ingot = Skyrim.MiscItem.ingotSilver,
+                        Keywords = new() { Skyrim.Keyword.WeapMaterialSilver }
+                    }
                 },
             };
 
