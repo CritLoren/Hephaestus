@@ -1,3 +1,4 @@
+using System.Collections;
 using Mutagen.Bethesda.FormKeys.SkyrimSE;
 using Mutagen.Bethesda.Plugins;
 using Mutagen.Bethesda.Skyrim;
@@ -24,10 +25,10 @@ namespace Hephaestus
             Skyrim.Static.BlacksmithAnvilStatic;
     }
 
-    public class MaterialWhitelist
+    public class MaterialWhitelistData
     {
         [SynthesisSettingName("The material ingot")]
-        public IFormLink<IItemGetter> Ingot { get; set; } = Skyrim.MiscItem.Leather01;
+        public IFormLinkGetter<IItemGetter> Ingot { get; set; } = Skyrim.MiscItem.Leather01;
 
         [SynthesisSettingName("The perk required to craft")]
         public IFormLinkGetter<IPerkGetter> PerkReq { get; set; } =
@@ -44,10 +45,6 @@ namespace Hephaestus
 
         [SynthesisSettingName("The part's size (going from 1 to 3)")]
         public int Size { get; set; } = 1;
-
-        [SynthesisSettingName("The part's crafting bench")]
-        public IFormLinkGetter<IKeywordGetter> Bench { get; set; } =
-            Skyrim.Keyword.CraftingSmithingForge;
     }
 
     public class PartList
@@ -188,7 +185,7 @@ namespace Hephaestus
             };
 
         [SynthesisSettingName("Material Whitelist")]
-        public Dictionary<string, MaterialWhitelist> MaterialWhitelist { get; set; } =
+        public Dictionary<string, MaterialWhitelistData> MaterialWhitelist { get; set; } =
             new()
             {
                 {
@@ -558,7 +555,7 @@ namespace Hephaestus
                     List =
                     {
                         new() { Name = "Grip" },
-                        new() { Name = "Bowstring", Bench = Skyrim.Keyword.CraftingTanningRack },
+                        new() { Name = "Bowstring", },
                         new() { Name = "Limb", Size = 2 }
                     }
                 },
@@ -568,11 +565,7 @@ namespace Hephaestus
                     List =
                     {
                         new() { Name = "Pommel" },
-                        new()
-                        {
-                            Name = "One Handed Handle",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "One Handed Handle" },
                         new() { Name = "Standard Shaft" },
                         new() { Name = "Axe Head" }
                     }
@@ -583,11 +576,7 @@ namespace Hephaestus
                     List =
                     {
                         new() { Name = "Pommel" },
-                        new()
-                        {
-                            Name = "One Handed Handle",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "One Handed Handle", },
                         new() { Name = "Standard Shaft" },
                         new() { Name = "Mace Head" }
                     }
@@ -598,11 +587,7 @@ namespace Hephaestus
                     List =
                     {
                         new() { Name = "Pommel" },
-                        new()
-                        {
-                            Name = "One Handed Handle",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "One Handed Handle", },
                         new() { Name = "Guard" },
                         new() { Name = "Standard Blade", Size = 2 }
                     }
@@ -613,11 +598,7 @@ namespace Hephaestus
                     List =
                     {
                         new() { Name = "Pommel" },
-                        new()
-                        {
-                            Name = "One Handed Handle",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "One Handed Handle", },
                         new() { Name = "Guard" },
                         new() { Name = "Short Blade" }
                     }
@@ -628,11 +609,7 @@ namespace Hephaestus
                     List =
                     {
                         new() { Name = "Pommel" },
-                        new()
-                        {
-                            Name = "Two Handed Handle",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "Two Handed Handle", },
                         new() { Name = "Guard" },
                         new() { Name = "Great Blade", Size = 3 }
                     }
@@ -643,11 +620,7 @@ namespace Hephaestus
                     List =
                     {
                         new() { Name = "Pommel" },
-                        new()
-                        {
-                            Name = "Two Handed Handle",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "Two Handed Handle", },
                         new() { Name = "Long Shaft", Size = 2 },
                         new() { Name = "Great Axe Blade", Size = 2 }
                     }
@@ -658,13 +631,9 @@ namespace Hephaestus
                     List =
                     {
                         new() { Name = "Pommel" },
-                        new()
-                        {
-                            Name = "Two Handed Handle",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "Two Handed Handle", },
                         new() { Name = "Long Shaft", Size = 2 },
-                        new() { Name = "Great Hammer Blade", Size = 2 }
+                        new() { Name = "Great Hammer Head", Size = 2 }
                     }
                 },
                 new PartList()
@@ -672,16 +641,8 @@ namespace Hephaestus
                     Keywords = new() { Skyrim.Keyword.ClothingHead, },
                     List =
                     {
-                        new()
-                        {
-                            Name = "Hat Inner Lining",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
-                        new()
-                        {
-                            Name = "Hat Stitching Pattern",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "Hat Inner Lining", },
+                        new() { Name = "Hat Stitching Pattern", },
                     }
                 },
                 new PartList()
@@ -689,11 +650,7 @@ namespace Hephaestus
                     Keywords = new() { Skyrim.Keyword.ArmorHelmet, Skyrim.Keyword.ArmorLight },
                     List =
                     {
-                        new()
-                        {
-                            Name = "Helmet Inner Padding",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "Helmet Inner Padding", },
                         new() { Name = "Light Helmet", },
                     }
                 },
@@ -702,11 +659,7 @@ namespace Hephaestus
                     Keywords = new() { Skyrim.Keyword.ArmorHelmet, Skyrim.Keyword.ArmorHeavy },
                     List =
                     {
-                        new()
-                        {
-                            Name = "Helmet Inner Padding",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "Helmet Inner Padding", },
                         new() { Name = "Heavy Helmet", },
                     }
                 },
@@ -715,26 +668,10 @@ namespace Hephaestus
                     Keywords = new() { Skyrim.Keyword.ClothingBody },
                     List =
                     {
-                        new()
-                        {
-                            Name = "Clothes Inner Lining",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
-                        new()
-                        {
-                            Name = "Chest Stitching Pattern",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
-                        new()
-                        {
-                            Name = "Arm Stitching Pattern",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
-                        new()
-                        {
-                            Name = "Trousers Stitching Pattern",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "Clothes Inner Lining", },
+                        new() { Name = "Chest Stitching Pattern", },
+                        new() { Name = "Arm Stitching Pattern", },
+                        new() { Name = "Trousers Stitching Pattern", },
                     }
                 },
                 new PartList()
@@ -742,11 +679,7 @@ namespace Hephaestus
                     Keywords = new() { Skyrim.Keyword.ArmorCuirass, Skyrim.Keyword.ArmorLight },
                     List =
                     {
-                        new()
-                        {
-                            Name = "Cuirass Inner Padding",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "Cuirass Inner Padding", },
                         new() { Name = "Light Breastplate", },
                         new() { Name = "Light Pauldron", },
                         new() { Name = "Tasset", },
@@ -757,11 +690,7 @@ namespace Hephaestus
                     Keywords = new() { Skyrim.Keyword.ArmorCuirass, Skyrim.Keyword.ArmorHeavy },
                     List =
                     {
-                        new()
-                        {
-                            Name = "Cuirass Inner Padding",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "Cuirass Inner Padding", },
                         new() { Name = "Heavy Breastplate", },
                         new() { Name = "Heavy Pauldron", },
                         new() { Name = "Tasset", },
@@ -772,16 +701,8 @@ namespace Hephaestus
                     Keywords = new() { Skyrim.Keyword.ClothingHands },
                     List =
                     {
-                        new()
-                        {
-                            Name = "Glove Inner Lining",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
-                        new()
-                        {
-                            Name = "Glove Stitching Pattern",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "Glove Inner Lining", },
+                        new() { Name = "Glove Stitching Pattern", },
                     }
                 },
                 new PartList()
@@ -789,11 +710,7 @@ namespace Hephaestus
                     Keywords = new() { Skyrim.Keyword.ArmorGauntlets, Skyrim.Keyword.ArmorLight },
                     List =
                     {
-                        new()
-                        {
-                            Name = "Gauntlet Inner Padding",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "Gauntlet Inner Padding", },
                         new() { Name = "Light Vambrace", },
                         new() { Name = "Light Rerebrace", },
                         new() { Name = "Light Gauntlet", },
@@ -804,11 +721,7 @@ namespace Hephaestus
                     Keywords = new() { Skyrim.Keyword.ArmorGauntlets, Skyrim.Keyword.ArmorHeavy },
                     List =
                     {
-                        new()
-                        {
-                            Name = "Gauntlet Inner Padding",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "Gauntlet Inner Padding", },
                         new() { Name = "Heavy Vambrace", },
                         new() { Name = "Heavy Rerebrace", },
                         new() { Name = "Heavy Gauntlet", },
@@ -819,16 +732,8 @@ namespace Hephaestus
                     Keywords = new() { Skyrim.Keyword.ClothingFeet },
                     List =
                     {
-                        new()
-                        {
-                            Name = "Boot Inner Lining",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
-                        new()
-                        {
-                            Name = "Boot Stitching Pattern",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "Shoe Inner Lining", },
+                        new() { Name = "Shoe Stitching Pattern", },
                     }
                 },
                 new PartList()
@@ -836,26 +741,7 @@ namespace Hephaestus
                     Keywords = new() { Skyrim.Keyword.ArmorBoots, Skyrim.Keyword.ArmorLight },
                     List =
                     {
-                        new()
-                        {
-                            Name = "Sabaton Inner Padding",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
-                        new() { Name = "Greaves", },
-                        new() { Name = "Poleyns", },
-                        new() { Name = "Light Sabaton", },
-                    }
-                },
-                new PartList()
-                {
-                    Keywords = new() { Skyrim.Keyword.ArmorBoots, Skyrim.Keyword.ArmorLight },
-                    List =
-                    {
-                        new()
-                        {
-                            Name = "Sabaton Inner Padding",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "Sabaton Inner Padding", },
                         new() { Name = "Light Greaves", },
                         new() { Name = "Light Poleyns", },
                         new() { Name = "Light Sabaton", },
@@ -866,11 +752,7 @@ namespace Hephaestus
                     Keywords = new() { Skyrim.Keyword.ArmorBoots, Skyrim.Keyword.ArmorHeavy },
                     List =
                     {
-                        new()
-                        {
-                            Name = "Sabaton Inner Padding",
-                            Bench = Skyrim.Keyword.CraftingTanningRack
-                        },
+                        new() { Name = "Sabaton Inner Padding", },
                         new() { Name = "Heavy Greaves", },
                         new() { Name = "Heavy Poleyns", },
                         new() { Name = "Heavy Sabaton", },
@@ -881,7 +763,7 @@ namespace Hephaestus
                     Keywords = new() { Skyrim.Keyword.ArmorShield },
                     List =
                     {
-                        new() { Name = "Shield Trim", Bench = Skyrim.Keyword.CraftingTanningRack },
+                        new() { Name = "Shield Trim" },
                         new() { Name = "Shield Handle", },
                         new() { Name = "Shield Face", },
                     }

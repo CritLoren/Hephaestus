@@ -40,7 +40,6 @@ namespace Hephaestus
             Dictionary<FormKey, List<FormKey>> itemCOBJs = new();
             Dictionary<FormKey, List<FormKey>> itemKnowledgeReq = new();
             Dictionary<FormKey, List<string>> itemMaterials = new();
-            Dictionary<FormKey, FormKey> itemBench = new();
             Dictionary<string, FormKey> breakStudyKeywords = new();
             List<FormKey> noValidMats = new();
             List<FormKey> safeToKeepKnowledge = new();
@@ -94,7 +93,12 @@ namespace Hephaestus
                     },
                     Aliases = new()
                     {
-                        new() { ForcedReference = Skyrim.PlayerRef.AsNullable(), Spells = new() }
+                        new()
+                        {
+                            ForcedReference = Skyrim.PlayerRef.AsNullable(),
+                            Spells = new(),
+                            Items = new()
+                        }
                     }
                 };
             state.PatchMod.Quests.Set(hephaestusStartGameGiver);
@@ -103,6 +107,46 @@ namespace Hephaestus
             var overrideCell = state
                 .LinkCache.ResolveContext<ICell, ICellGetter>(Skyrim.Cell.QASmoke.FormKey)
                 .GetOrAddAsOverride(state.PatchMod);
+
+            if (
+                !state.LinkCache.TryResolve<IBookGetter>(
+                    Skyrim.Book.Book3ValuableDwemerHistory.FormKey,
+                    out var starterBookTemplate
+                )
+            )
+                return;
+
+            Book starterGuide =
+                new(state.PatchMod)
+                {
+                    Name = "Hephaestus: A Crafter's Lore",
+                    BookText = GenData.starterGuideText,
+
+                    EditorID = $"Hephaestus_Guide",
+                    Description =
+                        $"A quick guide to Hephaestus, and the general overview at what each item type now requires the knowledge of",
+                    Value = 10,
+                    Weight = 0.25f,
+                    Model = starterBookTemplate.Model?.DeepCopy(),
+                    InventoryArt = starterBookTemplate.InventoryArt.AsNullable(),
+                    ObjectBounds = starterBookTemplate.ObjectBounds.DeepCopy(),
+                    Type = Book.BookType.BookOrTome,
+                    PickUpSound = new FormLinkNullable<ISoundDescriptorGetter>(
+                        Skyrim.SoundDescriptor.ITMNoteUp.FormKey
+                    ),
+                };
+            state.PatchMod.Books.Set(starterGuide);
+            hephaestusStartGameGiver.Aliases.First().Items = new()
+            {
+                new()
+                {
+                    Item = new()
+                    {
+                        Item = new FormLink<IItemGetter>(starterGuide.FormKey),
+                        Count = 1
+                    }
+                }
+            };
 
             // !SECTION
             // SECTION - Helpers
@@ -116,7 +160,7 @@ namespace Hephaestus
             )
             {
                 string benchName = $"Portable Crafting Kit - {processType}";
-                string benchEditorID = $"Portable Crafting Kit - {processType}";
+                string benchEditorID = $"Hephaestus_Menu_{processType.Replace(" ", "")}";
 
                 // Create the keyword
                 Keyword benchKeyword = state.PatchMod.Keywords.AddNew();
@@ -266,7 +310,7 @@ namespace Hephaestus
             // ANCHOR - Create Conversion COBJs
             void createConversionCOBJs(
                 ConstructibleObject baseCOBJ,
-                List<IFormLink<IItemGetter>> ingredientList,
+                List<IFormLinkGetter<IItemGetter>> ingredientList,
                 IFormLink<IConstructibleGetter> result,
                 string benchKeyword,
                 [Optional] IFormLink<ISpellGetter> knowledge,
@@ -288,9 +332,12 @@ namespace Hephaestus
                         {
                             Item = new ContainerItem()
                             {
-                                Item = ingredient,
+                                Item = ingredient.AsSetter(),
                                 Count = (int)
-                                    Math.Round(ingredientCount / (double)ingredientList.Count)
+                                    Math.Max(
+                                        1,
+                                        Math.Round(ingredientCount / (double)ingredientList.Count)
+                                    )
                             },
                         }
                     );
@@ -329,16 +376,15 @@ namespace Hephaestus
             void createSchematicSetup(
                 [Optional] string partName,
                 [Optional] string materialName,
-                [Optional] IFormLink<IItemGetter> createdItem
+                [Optional] IItemGetter createdItem,
+                bool allowBreakdown = true
             )
             {
                 // ANCHOR - Initial checks and value setup
                 string createdItemName = string.Empty;
-                string createdItemEditorID = createdItemName.Replace(" ", "");
-
                 var material = Settings.MaterialWhitelist["Wood"];
                 int matReqCount = 1;
-                List<IFormLink<IItemGetter>> ingotList = new();
+                List<IFormLinkGetter<IItemGetter>> ingotList = new();
 
                 if (createdItem == null)
                 {
@@ -358,6 +404,7 @@ namespace Hephaestus
                     foreach (var materialEntry in itemMaterials[createdItem.FormKey])
                         ingotList.Add(Settings.MaterialWhitelist[materialEntry].Ingot);
                 }
+                string createdItemEditorID = createdItemName.Replace(" ", "");
 
                 string aAn = "a ";
                 if (createdItemName.IndexOfAny(GenData.vowels) == 0)
@@ -403,7 +450,9 @@ namespace Hephaestus
                     new(state.PatchMod)
                     {
                         EditorID = $"{createdItemEditorID}_Schematic",
-                        Name = $"{createdItemName} - Part Schematic",
+                        Name = $"{createdItemName} - Schematic",
+                        BookText =
+                            $"A schematic describing the process of crafting {aAn}{createdItemName}. ",
                         Description =
                             $"A schematic describing the process of crafting {aAn}{createdItemName}. I should read this to memorize it — or perhaps I can sell it instead...",
                         Value = 10,
@@ -417,7 +466,6 @@ namespace Hephaestus
                         ),
                         Keywords = new() { Skyrim.Keyword.VendorItemRecipe },
                     };
-
                 state.PatchMod.Books.Set(book);
 
                 // ANCHOR - Create the knowledge "perk" SPELL
@@ -425,7 +473,7 @@ namespace Hephaestus
                     new(state.PatchMod)
                     {
                         EditorID = $"{createdItemEditorID}_Knowledge",
-                        Name = $"{createdItemName} - Part Knowledge",
+                        Name = $"{createdItemName} - Knowledge",
                         MenuDisplayObject = book.InventoryArt,
                         ObjectBounds = book.ObjectBounds,
                         EquipmentType = new FormLinkNullable<IEquipTypeGetter>(
@@ -443,7 +491,7 @@ namespace Hephaestus
                     new(state.PatchMod)
                     {
                         EditorID = $"{createdItemEditorID}_KnowledgeMGEF",
-                        Name = $"{createdItemName} - Part Knowledge",
+                        Name = $"{createdItemName} - Knowledge",
                         MenuDisplayObject = book.InventoryArt,
                         Flags = MagicEffect.Flag.NoMagnitude,
                         CastType = CastType.ConstantEffect,
@@ -463,9 +511,9 @@ namespace Hephaestus
                     new(state.PatchMod)
                     {
                         EditorID = $"{book.EditorID}_Fragment",
-                        Name = $"{createdItemName} - Part Notes",
+                        Name = $"{createdItemName} - Notes",
                         Description =
-                            $"My notes on the crafting process of {aAn}{createdItemName}.¨If I collect a few more I can perhaps combine them into a schematic...",
+                            $"Notes on the crafting process of {aAn}{createdItemName}. If I collect a few more I can perhaps combine them into a schematic...",
                         Value = 2,
                         Weight = 0.10f,
                         Model = GenData.bookModelLib[bookModelSetKey],
@@ -477,14 +525,16 @@ namespace Hephaestus
                         ),
                         Keywords = new() { Skyrim.Keyword.VendorItemRecipe },
                     };
+                state.PatchMod.Books.Set(bookFragment);
 
                 // ANCHOR - Create the COBJs
                 // Create COBJ fragment -> book
                 var noteToBookCOBJ = state.PatchMod.ConstructibleObjects.AddNew();
+                noteToBookCOBJ.EditorID = $"{createdItemName.Replace(" ", "")}_Note_To_Book";
 
                 createConversionCOBJs(
                     baseCOBJ: noteToBookCOBJ,
-                    ingredientList: new() { bookFragment.ToLink() },
+                    ingredientList: new() { bookFragment },
                     result: book.ToLink(),
                     benchKeyword: "Practice",
                     knowledge: knowledge.ToLink(),
@@ -493,6 +543,7 @@ namespace Hephaestus
 
                 // Create COBJ mats -> fragment
                 var matToNoteCOBJ = state.PatchMod.ConstructibleObjects.AddNew();
+                matToNoteCOBJ.EditorID = $"{createdItemName.Replace(" ", "")}_Material_To_Note";
 
                 createConversionCOBJs(
                     baseCOBJ: matToNoteCOBJ,
@@ -517,18 +568,6 @@ namespace Hephaestus
 
                 if (createdItem != null)
                 {
-                    // Create COBJ item -> book
-                    var itemToBookCOBJ = state.PatchMod.ConstructibleObjects.AddNew();
-
-                    createConversionCOBJs(
-                        baseCOBJ: itemToBookCOBJ,
-                        ingredientList: new() { createdItem },
-                        result: book.ToLink(),
-                        benchKeyword: "Dismantle",
-                        knowledge: knowledge.ToLink(),
-                        ingredientCount: 1
-                    );
-
                     // ANCHOR - Add cond to hide from menu if player lacks req perk
                     if (
                         state.LinkCache.TryResolve<IConstructibleObjectGetter>(
@@ -539,9 +578,32 @@ namespace Hephaestus
                         foreach (var cond in initialCOBJ.Conditions)
                         {
                             noteToBookCOBJ.Conditions.Add(cond.DeepCopy());
-                            itemToBookCOBJ.Conditions.Add(cond.DeepCopy());
                             matToNoteCOBJ.Conditions.Add(cond.DeepCopy());
                         }
+
+                    // ANCHOR - Create dismantle recipe, but only if it's not an artifact
+                    if (allowBreakdown)
+                    {
+                        // Create COBJ item -> book
+                        var itemToBookCOBJ = state.PatchMod.ConstructibleObjects.AddNew();
+                        itemToBookCOBJ.EditorID =
+                            $"{createdItemName.Replace(" ", "")}_Item_To_Book";
+
+                        createConversionCOBJs(
+                            baseCOBJ: itemToBookCOBJ,
+                            ingredientList: new() { createdItem },
+                            result: book.ToLink(),
+                            benchKeyword: "Dismantle",
+                            knowledge: knowledge.ToLink(),
+                            ingredientCount: 1
+                        );
+
+                        if (initialCOBJ != null)
+                            foreach (var cond in initialCOBJ.Conditions)
+                                itemToBookCOBJ.Conditions.Add(cond.DeepCopy());
+
+                        bookKnowledge[knowledge.FormKey].Add(itemToBookCOBJ.FormKey);
+                    }
 
                     if (Settings.ShowDebugLogs)
                     {
@@ -552,8 +614,6 @@ namespace Hephaestus
                         );
                         Console.WriteLine($"-------------------------------");
                     }
-
-                    bookKnowledge[knowledge.FormKey].Add(itemToBookCOBJ.FormKey);
                     // Add to temp list to avoid removal
                     safeToKeepKnowledge.Add(knowledge.FormKey);
 
@@ -644,10 +704,7 @@ namespace Hephaestus
                 partDict.Add(material.Key, new());
 
                 foreach (string partName in partListUniques.Keys)
-                {
-                    string createdItemName = $"{material.Key} {partName}";
                     createSchematicSetup(partName: partName, materialName: material.Key);
-                }
             }
 
             //!SECTION
@@ -730,9 +787,6 @@ namespace Hephaestus
                         itemCOBJs.Add(createdItem.FormKey, new List<FormKey>());
                     itemCOBJs[createdItem.FormKey].Add(baseCOBJ.FormKey);
 
-                    if (!itemBench.ContainsKey(createdItem.FormKey))
-                        itemBench.Add(createdItem.FormKey, baseCOBJ.WorkbenchKeyword.FormKey);
-
                     if (Settings.ShowDebugLogs)
                     {
                         Console.WriteLine(
@@ -786,38 +840,37 @@ namespace Hephaestus
                 itemKnowledgeReq.Add(createdItemFormKey, new());
 
                 // Only create a design blueprint if this is not a basic item
-                if (
-                    !Settings.BasicItems.Contains(createdItemFormKey)
-                    || (
-                        createdItemKeywords.Keywords != null
-                        && !createdItemKeywords.Keywords.Contains(Skyrim.Keyword.DaedricArtifact)
-                    )
-                )
+                if (!Settings.BasicItems.Contains(createdItemFormKey))
                 {
                     if (Settings.ShowDebugLogs)
                     {
                         Console.WriteLine($"Generating design schematic ...");
                     }
 
-                    createSchematicSetup(createdItem: createdItem.ToLink());
+                    createSchematicSetup(
+                        createdItem: createdItem,
+                        allowBreakdown: createdItemKeywords.Keywords != null
+                            && !createdItemKeywords.Keywords.Contains(
+                                Skyrim.Keyword.DaedricArtifact
+                            )
+                    );
                 }
                 else if (Settings.ShowDebugLogs)
-                {
                     Console.WriteLine($"Basic item, skipping design schematic");
-                    // TODO - Basic item process
-                }
 
                 // ANCHOR Assigning the parts
                 if (createdItemKeywords.Keywords != null)
+                {
                     // loop through all part keywords, eg: light helmet, etc. skip if not valid
-                    foreach (var partKey in Settings.PartList)
-                    {
-                        if (!partKey.Keywords.All(e => createdItemKeywords.Keywords.Contains(e)))
-                            continue;
 
+                    var partEntry = Settings.PartList.FirstOrDefault(e =>
+                        e.Keywords.All(q => createdItemKeywords.Keywords.Contains(q))
+                    );
+
+                    if (partEntry != null)
                         foreach (var material in itemMaterials[createdItemFormKey])
                         {
-                            foreach (var part in partKey.List)
+                            foreach (var part in partEntry.List)
                             {
                                 if (
                                     !createdItemKeywords.Keywords.Contains(
@@ -827,11 +880,13 @@ namespace Hephaestus
                                 {
                                     var itemToBookCOBJ =
                                         state.PatchMod.ConstructibleObjects.AddNew();
+                                    itemToBookCOBJ.EditorID =
+                                        $"{createdItemName.Name.Replace(" ", "")}_Item_To_{material}_{part.Name.Replace(" ", "")}";
 
                                     createConversionCOBJs(
                                         benchKeyword: "Dismantle",
                                         baseCOBJ: itemToBookCOBJ,
-                                        ingredientList: new() { createdItem.ToLink() },
+                                        ingredientList: new() { createdItem },
                                         ingredientCount: 1,
                                         result: new FormLinkNullable<IConstructibleGetter>(
                                             bookKnowledge[partDict[material][part.Name]][0]
@@ -857,15 +912,16 @@ namespace Hephaestus
 
                                 if (Settings.ShowDebugLogs)
                                 {
-                                    Console.WriteLine($"Found {part.Name}");
+                                    Console.WriteLine($"Found {material} {part.Name}");
                                 }
 
                                 // Add to temp list to avoid removal
                                 safeToKeepKnowledge.Add(partDict[material][part.Name]);
                             }
                         }
-                    }
+                }
 
+                // ANCHOR Apply knowledge requirements to item
                 foreach (FormKey cobjFormKey in itemCOBJs[createdItemFormKey])
                 {
                     // Define COBJ
@@ -894,12 +950,67 @@ namespace Hephaestus
                 }
                 ;
 
+                if (itemKnowledgeReq[createdItemFormKey].Count >= 1)
+                {
+                    if (
+                        state.LinkCache.TryResolve<ISpellGetter>(
+                            itemKnowledgeReq[createdItemFormKey][0],
+                            out var knowledge
+                        )
+                        && state.LinkCache.TryResolve<IBookGetter>(
+                            bookKnowledge[itemKnowledgeReq[createdItemFormKey][0]][0],
+                            out var masterBook
+                        )
+                    )
+                    {
+                        var book = state.PatchMod.Books.GetOrAddAsOverride(masterBook);
+
+                        string aAn = "a ";
+                        if (createdItemName.Name.IndexOfAny(GenData.vowels) == 0)
+                            aAn = "an ";
+                        else if (
+                            (
+                                createdItem.FormKey == Skyrim.MiscItem.LeatherStrips.FormKey
+                                || createdItem.FormKey == Skyrim.MiscItem.Leather01.FormKey
+                            )
+                        )
+                            aAn = "";
+
+                        book.BookText +=
+                            $"In addition to this parent schematic I will need to know how to craft the following:<ul>";
+
+                        for (int i = 1; i < itemKnowledgeReq[createdItemFormKey].Count; i++)
+                        {
+                            // Define COBJ
+                            if (
+                                state.LinkCache.TryResolve<ISpellGetter>(
+                                    itemKnowledgeReq[createdItemFormKey][i],
+                                    out var knowledgeSpell
+                                )
+                            )
+                            {
+                                if (knowledgeSpell.Name == null)
+                                    continue;
+
+                                if (
+                                    knowledgeSpell.Name.TryLookup(
+                                        Mutagen.Bethesda.Strings.Language.English,
+                                        out var knowledgeName
+                                    )
+                                )
+                                    book.BookText += $"<li>{knowledgeName.Split(" - ")[0]}</li>";
+                            }
+                        }
+                        book.BookText += $"</ul>";
+                    }
+                }
+
                 // ANCHOR - Patch LVLIs to include schematics
 
                 if (Settings.ShowDebugLogs)
                 {
                     Console.WriteLine(string.Empty);
-                    Console.WriteLine($"Patching LVLIs to include new schematics ...");
+                    Console.WriteLine($"Looking for LVLIs to include new schematics to ...");
                 }
 
                 foreach (FormKey lvliFormKey in LootLVLIWhitelist)
