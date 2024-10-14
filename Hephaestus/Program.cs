@@ -381,7 +381,15 @@ namespace Hephaestus
                                 NPCNames.AddRange(GenData.OrcNPCNames);
                                 NPCNames.AddRange(GenData.DwemerNPCNames);
                             }
+                        } else {
+                            NPCNames.AddRange(GenData.NordNPCNames);
+                            NPCNames.AddRange(GenData.HumanNPCNames);
+                            NPCNames.AddRange(GenData.BeastNPCNames);
+                            NPCNames.AddRange(GenData.ElfNPCNames);
+                            NPCNames.AddRange(GenData.OrcNPCNames);
+                            NPCNames.AddRange(GenData.DwemerNPCNames);
                         }
+
                         // create a new book
                         book = state.PatchMod.Books.AddNew();
 
