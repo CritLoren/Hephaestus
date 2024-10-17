@@ -381,15 +381,31 @@ namespace Hephaestus
                                 NPCNames.AddRange(GenData.OrcNPCNames);
                                 NPCNames.AddRange(GenData.DwemerNPCNames);
                             }
+                        } else {
+                            NPCNames.AddRange(GenData.NordNPCNames);
+                            NPCNames.AddRange(GenData.HumanNPCNames);
+                            NPCNames.AddRange(GenData.BeastNPCNames);
+                            NPCNames.AddRange(GenData.ElfNPCNames);
+                            NPCNames.AddRange(GenData.OrcNPCNames);
+                            NPCNames.AddRange(GenData.DwemerNPCNames);
                         }
+
                         // create a new book
                         book = state.PatchMod.Books.AddNew();
 
                         // Set the book properties
                         book.EditorID = $"{objEditorID}_{schematicType}";
                         book.Name = $"{objType} {schematicType}: {objName}";
-                        book.Description =
-                            $"A {schematicType.ToLower()} created by {NPCNames[random.Next(NPCNames.Count)]}. It details the process of {processNameCont} {aAn}{objName}.";
+                        if (NPCNames.Count > 0)
+                        {
+                            book.Description =
+                                $"A {schematicType.ToLower()} created by {NPCNames[random.Next(NPCNames.Count)]}. It details the process of {processNameCont} {aAn}{objName}.";
+                        }
+                        else
+                        {
+                            book.Description =
+                                $"A {schematicType.ToLower()}. It details the process of {processNameCont} {aAn}{objName}.";
+                        }
                         book.Value = objValue * (noteToSchematicRatio + 2);
                         book.Weight = 0.25f;
                         book.Model = GenData.bookModelLib[bookModelSetKey];
